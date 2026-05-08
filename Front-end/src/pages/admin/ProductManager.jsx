@@ -34,7 +34,6 @@ const ProductManager = () => {
     const [detailProduct, setDetailProduct] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState('');
-    const [detailClosing, setDetailClosing] = useState(false);
     const [openActionMenuId, setOpenActionMenuId] = useState(null);
     const [actionMenuAnchor, setActionMenuAnchor] = useState(null);
     const [actionMenuPlacement, setActionMenuPlacement] = useState({ align: 'right', direction: 'down' });
@@ -197,13 +196,9 @@ const ProductManager = () => {
 
     const closeDetailDrawer = () => {
         if (!detailProduct && !detailLoading && !detailError) return;
-        setDetailClosing(true);
-        window.setTimeout(() => {
-            setDetailProduct(null);
-            setDetailError('');
-            setDetailLoading(false);
-            setDetailClosing(false);
-        }, 280);
+        setDetailProduct(null);
+        setDetailError('');
+        setDetailLoading(false);
     };
 
     const openDeleteModal = (p) => {
@@ -214,7 +209,7 @@ const ProductManager = () => {
         const rect = target?.getBoundingClientRect?.();
         setOpenActionMenuId(productId);
         if (rect) {
-            setActionMenuAnchor({ top: rect.bottom + window.scrollY + 8, left: rect.left + window.scrollX, width: rect.width });
+            setActionMenuAnchor({ top: rect.bottom + 8, left: rect.left, width: rect.width });
         } else {
             setActionMenuAnchor(null);
         }
@@ -246,6 +241,9 @@ const ProductManager = () => {
         const direction = spaceBelow >= rect.height + margin || spaceBelow >= spaceAbove ? 'down' : 'up';
 
         setActionMenuPlacement((prev) => (prev.align === align && prev.direction === direction ? prev : { align, direction }));
+        if (menu.style.visibility !== 'visible') {
+            menu.style.visibility = 'visible';
+        }
         return undefined;
     }, [actionMenuAnchor, openActionMenuId]);
 
@@ -427,7 +425,7 @@ const ProductManager = () => {
                                                             left: actionMenuPlacement.align === 'left'
                                                                 ? Math.max(8, actionMenuAnchor.left + actionMenuAnchor.width - 208)
                                                                 : actionMenuAnchor.left,
-                                                            visibility: actionMenuPlacement.align ? 'visible' : 'hidden',
+                                                            visibility: actionMenuPlacement.align && actionMenuPlacement.direction ? 'visible' : 'hidden',
                                                         }}
                                                     >
                                                         <button type="button" className="action-menu-item" onClick={() => { closeActionMenu(); void openDetailDrawer(p); }}>

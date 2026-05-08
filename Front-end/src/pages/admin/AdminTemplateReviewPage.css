@@ -1,0 +1,43 @@
+.admin-template-review-page .admin-table th,
+.admin-template-review-page .admin-table td {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.admin-template-review-page .admin-table td strong {
+    display: inline-block;
+}
+
+.admin-template-actions {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.admin-template-review-page .btn-approve {
+    background: #16a34a;
+    color: #fff;
+    border-color: #16a34a;
+}
+
+.admin-template-review-page .btn-approve:hover:not(:disabled) {
+    background: #15803d;
+    border-color: #15803d;
+}
+
+.admin-template-review-page .btn-reject {
+    background: #dc2626;
+    color: #fff;
+    border-color: #dc2626;
+}
+
+.admin-template-review-page .btn-reject:hover:not(:disabled) {
+    background: #b91c1c;
+    border-color: #b91c1c;
+}
+
+.admin-table-center {
+    text-align: center;
+}

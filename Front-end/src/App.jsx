@@ -61,6 +61,7 @@ import AdminComplaintManagementPage from './pages/admin/AdminComplaintManagement
 import AdminRecoveryManagementPage from './pages/admin/AdminRecoveryManagementPage'
 import ShipmentDemoStatusPage from './pages/admin/ShipmentDemoStatusPage'
 import AdminWallets from './pages/admin/AdminWallets'
+import AdminTemplateReviewPage from './pages/admin/AdminTemplateReviewPage'
 
 function ArtisanOnlyRoute({ children }) {
   const { user, loading } = useAuth()
@@ -151,6 +152,7 @@ function App() {
           <Route path="recovery-management" element={<AdminRecoveryManagementPage />} />
           <Route path="withdrawals" element={<AdminWithdrawals />} />
           <Route path="categories" element={<CategoryManager />} />
+          <Route path="template-reviews" element={<AdminTemplateReviewPage />} />
           <Route path="artisan-applications" element={<ArtisanApplications />} />
         </Route>
 

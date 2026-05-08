@@ -75,9 +75,11 @@ const AdminLayout = () => {
             title: 'Danh mục & sản phẩm',
             items: [
                 { path: '/admin/products', name: 'Duyệt sản phẩm', icon: <FiPackage /> },
+                { path: '/admin/template-reviews', name: 'Duyệt phân loại', icon: <FiClipboard /> },
                 { path: '/admin/categories', name: 'Danh mục', icon: <FiGrid /> },
+                
             ],
-        }, 
+        },
     ];
 
     const handleLogout = () => {
