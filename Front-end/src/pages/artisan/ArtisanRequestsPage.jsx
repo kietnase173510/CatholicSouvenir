@@ -145,17 +145,16 @@ const RequestList = memo(({ loading, filtered, page, totalPages, onPrev, onNext,
                             </div>
                             <footer className="card-footer-block">
                                 <div className="artisan-request-actions">
-                                    {status === 'OPEN' ? (
-                                        <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/artisan/requests/${id}`)}>
-                                            Xem chi tiết
-                                        </button>
-                                    ) : canCreateCustomOrder ? (
+                                    <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/artisan/requests/${id}`)}>
+                                        Xem chi tiết
+                                    </button>
+                                    {canCreateCustomOrder ? (
                                         <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/artisan/requests/${id}/custom-order`)}>
-                                            Tạo custom order
+                                            Tạo đơn
                                         </button>
                                     ) : (
                                         <button type="button" className="btn btn-outline btn-sm" disabled title="Chỉ tạo custom order khi khách đã chọn nghệ nhân">
-                                            Chưa được chọn
+                                            Chưa chọn
                                         </button>
                                     )}
                                     <button type="button" className="btn btn-primary btn-sm" onClick={async () => {
