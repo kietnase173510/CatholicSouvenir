@@ -1,6 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FiCalendar, FiCheckCircle, FiChevronLeft, FiChevronRight, FiClock, FiPackage, FiUser, FiXCircle } from 'react-icons/fi';
+import {
+    FiCalendar,
+    FiCheckCircle,
+    FiChevronDown,
+    FiChevronLeft,
+    FiChevronRight,
+    FiClock,
+    FiFilter,
+    FiPackage,
+    FiSearch,
+    FiSliders,
+    FiUser,
+    FiX,
+    FiXCircle,
+} from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { appToast } from '../../lib/appToast';
 import { cancelCustomOrder, getArtisanCustomOrders } from '../../services/customRequestService';
@@ -13,11 +27,22 @@ const tabs = [
     { key: 'IN_PROGRESS', label: 'Đang thực hiện' },
     { key: 'COMPLETED', label: 'Hoàn thành' },
     { key: 'CANCELLED', label: 'Đã huỷ' },
+    { key: 'CANCELLED_BY_ARTISAN', label: 'Đã huỷ bởi nghệ nhân' },
+    { key: 'CANCELLED_BY_CUSTOMER', label: 'Đã huỷ bởi khách hàng' },
+    { key: 'CANCELLED_BY_SYSTEM', label: 'Đã huỷ bởi hệ thống' },
+    { key: 'REFUNDED', label: 'Đã hoàn tiền' },
 ];
 
 const sortOptions = [
-    { key: 'NEWEST', label: 'Mới nhất' },
-    { key: 'OLDEST', label: 'Cũ nhất' },
+    { key: 'NEWEST', label: 'Mới nhất', hint: 'Theo thời gian tạo giảm dần' },
+    { key: 'OLDEST', label: 'Cũ nhất', hint: 'Theo thời gian tạo tăng dần' },
+];
+
+const quickFilters = [
+    { key: 'ALL', label: 'Tất cả', icon: FiFilter },
+    { key: 'IN_PROGRESS', label: 'Đang thực hiện', icon: FiClock },
+    { key: 'COMPLETED', label: 'Hoàn thành', icon: FiCheckCircle },
+    { key: 'CANCELLED', label: 'Đã huỷ', icon: FiXCircle },
 ];
 
 const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`;
@@ -35,6 +60,10 @@ const getStatusText = (status) => {
     if (s === 'IN_PROGRESS') return 'Đang thực hiện';
     if (s === 'COMPLETED') return 'Hoàn thành';
     if (s === 'CANCELLED') return 'Đã huỷ';
+    if (s === 'CANCELLED_BY_ARTISAN') return 'Đã huỷ bởi nghệ nhân';
+    if (s === 'CANCELLED_BY_CUSTOMER') return 'Đã huỷ bởi khách hàng';
+    if (s === 'CANCELLED_BY_SYSTEM') return 'Đã huỷ bởi hệ thống';
+    if (s === 'REFUNDED') return 'Đã hoàn tiền';
     return 'Chờ xử lý';
 };
 
@@ -43,6 +72,10 @@ const getStatusClass = (status) => {
     if (s === 'IN_PROGRESS') return 'in-progress';
     if (s === 'COMPLETED') return 'completed';
     if (s === 'CANCELLED') return 'cancelled';
+    if (s === 'CANCELLED_BY_ARTISAN') return 'cancelled';
+    if (s === 'CANCELLED_BY_CUSTOMER') return 'cancelled';
+    if (s === 'CANCELLED_BY_SYSTEM') return 'cancelled';
+    if (s === 'REFUNDED') return 'refunded';
     return 'pending';
 };
 
@@ -57,47 +90,60 @@ const ArtisanOrdersPage = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState([]);
-    const [page, setPage] = useState(0);
     const [pageInfo, setPageInfo] = useState({ totalPages: 0, totalElements: 0, number: 0 });
+    const [allOrders, setAllOrders] = useState([]);
     const [activeTab, setActiveTab] = useState('ALL');
     const [sortOrder, setSortOrder] = useState('NEWEST');
     const [cancellingId, setCancellingId] = useState('');
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
     const [targetCancelOrderId, setTargetCancelOrderId] = useState('');
     const [cancelConfirmText, setCancelConfirmText] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+    const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
 
-    const pageCount = Number(pageInfo.totalPages || 0);
-    const currentPage = Number(pageInfo.number || page);
-    const hasNextPage = currentPage < pageCount - 1;
-    const hasPreviousPage = currentPage > 0;
-
-    const fetchOrders = useCallback(async (nextPage = page) => {
-        setLoading(true);
-        const res = await getArtisanCustomOrders({ page: nextPage, size: PAGE_SIZE });
-        setLoading(false);
-
-        if (!res.success) {
-            setOrders([]);
-            setPageInfo({ totalPages: 0, totalElements: 0, number: nextPage });
-            appToast.error('Không tải được đơn tùy chỉnh', res.error || 'Vui lòng thử lại');
-            return;
-        }
-
-        const data = res.data || {};
-        setOrders(Array.isArray(data.content) ? data.content : []);
-        setPageInfo({
-            totalPages: Number(data.totalPages || 0),
-            totalElements: Number(data.totalElements || 0),
-            number: Number(data.number || nextPage),
-        });
-    }, [page]);
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            fetchOrders(page);
-        }, 0);
-        return () => clearTimeout(timer);
-    }, [fetchOrders, page]);
+        const loadOrders = async () => {
+            setLoading(true);
+            const firstRes = await getArtisanCustomOrders({ page: 0, size: PAGE_SIZE });
+
+            if (!firstRes.success) {
+                setLoading(false);
+                setOrders([]);
+                setAllOrders([]);
+                setPageInfo({ totalPages: 0, totalElements: 0, number: 0 });
+                appToast.error('Không tải được đơn tùy chỉnh', firstRes.error || 'Vui lòng thử lại');
+                return;
+            }
+
+            const firstData = firstRes.data || {};
+            const totalPages = Number(firstData.totalPages || 0);
+            const totalElements = Number(firstData.totalElements || 0);
+            let merged = Array.isArray(firstData.content) ? firstData.content : [];
+
+            if (totalPages > 1) {
+                const requests = Array.from({ length: totalPages - 1 }, (_, idx) => getArtisanCustomOrders({ page: idx + 1, size: PAGE_SIZE }));
+                const results = await Promise.all(requests);
+                results.forEach((res) => {
+                    if (!res.success) return;
+                    const content = Array.isArray(res.data?.content) ? res.data.content : [];
+                    merged = merged.concat(content);
+                });
+            }
+
+            setOrders(firstData.content || []);
+            setAllOrders(merged);
+            setPageInfo({
+                totalPages,
+                totalElements,
+                number: 0,
+            });
+            setLoading(false);
+        };
+
+        loadOrders();
+    }, []);
 
     useEffect(() => {
         if (!cancelModalOpen) return undefined;
@@ -110,10 +156,35 @@ const ArtisanOrdersPage = () => {
         };
     }, [cancelModalOpen]);
 
+    const sourceOrders = useMemo(() => allOrders.length ? allOrders : [], [allOrders]);
+
     const filtered = useMemo(() => {
-        if (activeTab === 'ALL') return orders;
-        return orders.filter((order) => String(order?.status || '').toUpperCase() === activeTab);
-    }, [activeTab, orders]);
+        const term = searchTerm.trim().toLowerCase();
+        return sourceOrders.filter((order) => {
+            const matchesStatus = activeTab === 'ALL' || String(order?.status || '').toUpperCase() === activeTab;
+            if (!matchesStatus) return false;
+            if (!term) return true;
+
+            const searchable = [
+                order?.requestDescription,
+                order?.requestTitle,
+                order?.description,
+                order?.customerName,
+                order?.customer?.fullName,
+                order?.artisanName,
+                order?.artisanEmail,
+                order?.status,
+                order?.customOrderId,
+                order?.orderId,
+                order?.id,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+
+            return searchable.includes(term);
+        });
+    }, [activeTab, searchTerm, sourceOrders]);
 
     const sortedFiltered = useMemo(() => {
         const toTime = (value) => {
@@ -128,21 +199,23 @@ const ArtisanOrdersPage = () => {
         });
     }, [filtered, sortOrder]);
 
+    const activeSortLabel = sortOptions.find((option) => option.key === sortOrder)?.label || 'Mới nhất';
+    const activeStatusLabel = tabs.find((tab) => tab.key === activeTab)?.label || 'Tất cả';
+    const filteredTotal = filtered.length;
+
     const summary = useMemo(() => {
-        const inProgress = orders.filter((order) => String(order?.status || '').toUpperCase() === 'IN_PROGRESS').length;
-        const completed = orders.filter((order) => String(order?.status || '').toUpperCase() === 'COMPLETED').length;
-        const cancelled = orders.filter((order) => String(order?.status || '').toUpperCase() === 'CANCELLED').length;
-        const from = currentPage * PAGE_SIZE + 1;
-        const to = Math.min((currentPage + 1) * PAGE_SIZE, pageInfo.totalElements || 0);
-        const paginationText = pageInfo.totalElements ? `Hiển thị ${from}–${to} trong tổng ${pageInfo.totalElements} đơn` : 'Hiển thị 0 đơn';
+        const inProgress = sourceOrders.filter((order) => String(order?.status || '').toUpperCase() === 'IN_PROGRESS').length;
+        const completed = sourceOrders.filter((order) => String(order?.status || '').toUpperCase() === 'COMPLETED').length;
+        const cancelled = sourceOrders.filter((order) => String(order?.status || '').toUpperCase() === 'CANCELLED').length;
         return {
-            total: pageInfo.totalElements || orders.length,
+            total: pageInfo.totalElements || sourceOrders.length,
             inProgress,
             completed,
             cancelled,
-            paginationText,
+            // paginationText: 'Hiện chưa phân trang, đang hiển thị toàn bộ đơn đã tải.',
         };
-    }, [currentPage, orders, pageInfo]);
+    }, [pageInfo, sourceOrders]);
+    const totalOrders = summary.total;
 
     const openCancelModal = (orderId) => {
         if (!orderId) return;
@@ -168,7 +241,7 @@ const ArtisanOrdersPage = () => {
         setTargetCancelOrderId('');
         setCancelConfirmText('');
         appToast.success('Huỷ đơn thành công');
-        fetchOrders();
+        fetchAllOrders();
     };
 
     return (
@@ -186,7 +259,7 @@ const ArtisanOrdersPage = () => {
                     <span className="summary-icon"><FiPackage /></span>
                     <div>
                         <p>Tổng đơn</p>
-                        <strong>{summary.total}</strong>
+                        <strong>{totalOrders}</strong>
                     </div>
                 </article>
                 <article className="summary-card">
@@ -212,36 +285,122 @@ const ArtisanOrdersPage = () => {
                 </article>
             </section>
 
-            <div className="tabs" role="tablist" aria-label="Lọc đơn hàng">
-                {tabs.map((tab) => (
-                    <button
-                        key={tab.key}
-                        type="button"
-                        className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
-                        onClick={() => setActiveTab(tab.key)}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
+            <section className="orders-filter-panel">
+                <div className="orders-filter-toolbar">
+                    <div className="search-box">
+                        <FiSearch />
+                        <input
+                            type="search"
+                            value={searchTerm}
+                            onChange={(e) => {
+                                setSearchTerm(e.target.value);
+                            }}
+                            placeholder="Tìm theo mã đơn, khách hàng, nghệ nhân, mô tả..."
+                            aria-label="Tìm kiếm đơn hàng"
+                        />
+                        {searchTerm ? (
+                            <button type="button" className="search-clear-btn" onClick={() => setSearchTerm('')} aria-label="Xoá tìm kiếm">
+                                <FiX />
+                            </button>
+                        ) : null}
+                    </div>
 
-            <div className="tabs sort-tabs" role="tablist" aria-label="Sắp xếp đơn hàng">
-                {sortOptions.map((option) => (
-                    <button
-                        key={option.key}
-                        type="button"
-                        className={`tab-btn ${sortOrder === option.key ? 'active' : ''}`}
-                        onClick={() => setSortOrder(option.key)}
-                    >
-                        {option.label}
-                    </button>
-                ))}
-            </div>
+                    <div className="dropdown-group">
+                        <button
+                            type="button"
+                            className={`filter-trigger ${statusDropdownOpen ? 'open' : ''}`}
+                            onClick={() => {
+                                setStatusDropdownOpen((prev) => !prev);
+                                setSortDropdownOpen(false);
+                            }}
+                        >
+                            <FiFilter />
+                            <span>{activeStatusLabel}</span>
+                            <FiChevronDown />
+                        </button>
+                        <button
+                            type="button"
+                            className={`filter-trigger ${sortDropdownOpen ? 'open' : ''}`}
+                            onClick={() => {
+                                setSortDropdownOpen((prev) => !prev);
+                                setStatusDropdownOpen(false);
+                            }}
+                        >
+                            <FiSliders />
+                            <span>{activeSortLabel}</span>
+                            <FiChevronDown />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="filter-chip-row" role="tablist" aria-label="Lọc đơn hàng">
+                    {quickFilters.map((tab) => {
+                        const Icon = tab.icon;
+                        return (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                className={`filter-chip ${activeTab === tab.key ? 'active' : ''}`}
+                                onClick={() => {
+                                    setActiveTab(tab.key);
+                                }}
+                            >
+                                <Icon />
+                                <span>{tab.label}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div className="filter-panel-meta">
+                    <span>Trạng thái: <strong>{activeStatusLabel}</strong></span>
+                    <span>Sắp xếp: <strong>{activeSortLabel}</strong></span>
+                    <span>Kết quả: <strong>{filtered.length}</strong></span>
+                </div>
+
+                {statusDropdownOpen ? (
+                    <div className="filter-dropdown-panel" role="menu" aria-label="Danh sách trạng thái">
+                        {tabs.map((tab) => (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                className={`filter-menu-item ${activeTab === tab.key ? 'active' : ''}`}
+                                onClick={() => {
+                                    setActiveTab(tab.key);
+                                    setPage(0);
+                                    setStatusDropdownOpen(false);
+                                }}
+                            >
+                                <span>{tab.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                ) : null}
+
+                {sortDropdownOpen ? (
+                    <div className="filter-dropdown-panel sort-panel" role="menu" aria-label="Chọn kiểu sắp xếp">
+                        {sortOptions.map((option) => (
+                            <button
+                                key={option.key}
+                                type="button"
+                                className={`filter-menu-item ${sortOrder === option.key ? 'active' : ''}`}
+                                onClick={() => {
+                                    setSortOrder(option.key);
+                                    setSortDropdownOpen(false);
+                                }}
+                            >
+                                <span>{option.label}</span>
+                                <small>{option.hint}</small>
+                            </button>
+                        ))}
+                    </div>
+                ) : null}
+            </section>
 
             {loading ? (
                 <div className="list-grid">{[1, 2, 3].map((item) => <div key={item} className="artisan-skeleton-card" />)}</div>
             ) : sortedFiltered.length === 0 ? (
-                <div className="artisan-empty">Không có đơn nào ở trạng thái này.</div>
+                <div className="artisan-empty">Không tìm thấy đơn phù hợp với bộ lọc hiện tại.</div>
             ) : (
                 <div className="list-grid">
                     {sortedFiltered.map((order) => {
@@ -316,32 +475,20 @@ const ArtisanOrdersPage = () => {
                 </div>
             )}
 
-            {!loading && filtered.length > 0 && pageCount > 1 && (
-                <div className="pagination-toolbar pagination-toolbar-bottom">
+            <div className="pagination-toolbar pagination-toolbar-bottom">
                     <div className="pagination-info">
                         <strong>{summary.paginationText}</strong>
-                        <span>Trang {pageCount ? currentPage + 1 : 0} / {pageCount || 0}</span>
+                        <span>Bộ lọc hiện tại trả về {sortedFiltered.length} đơn</span>
                     </div>
                     <div className="pagination-actions">
-                        <button
-                            type="button"
-                            className="btn btn-outline btn-sm"
-                            onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
-                            disabled={!hasPreviousPage || loading}
-                        >
+                        <button type="button" className="btn btn-outline btn-sm" disabled>
                             <FiChevronLeft /> Trước
                         </button>
-                        <button
-                            type="button"
-                            className="btn btn-outline btn-sm"
-                            onClick={() => setPage((prev) => Math.min(prev + 1, Math.max(pageCount - 1, 0)))}
-                            disabled={!hasNextPage || loading}
-                        >
+                        <button type="button" className="btn btn-outline btn-sm" disabled>
                             Sau <FiChevronRight />
                         </button>
                     </div>
                 </div>
-            )}
 
             {cancelModalOpen && createPortal(
                 <div className="cancel-modal-overlay" onClick={() => setCancelModalOpen(false)} aria-hidden="true">

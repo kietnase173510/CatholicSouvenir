@@ -173,7 +173,6 @@ const ProductManager = () => {
 
     const openDetailDrawer = async (product) => {
         if (!product?.productId) return;
-        setDetailClosing(false);
         setDetailProduct(null);
         setDetailError('');
         setDetailLoading(true);

@@ -40,6 +40,9 @@ const ORDER_STATUS_LABELS = {
     DELIVERED: 'Đã giao',
     COMPLETED: 'Hoàn thành',
     CANCELLED: 'Đã huỷ',
+    CANCELLED_BY_ARTISAN: 'Đã huỷ bởi nghệ nhân',
+    CANCELLED_BY_CUSTOMER: 'Đã huỷ bởi khách hàng',
+    CANCELLED_BY_SYSTEM: 'Đã huỷ bởi hệ thống',
     REFUNDED: 'Đã hoàn tiền',
 };
 
@@ -125,7 +128,7 @@ const ArtisanOrderDetailPage = () => {
     const [submittingStageId, setSubmittingStageId] = useState('');
     const [cancelling, setCancelling] = useState(false);
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
-    const [cancelConfirmText, setCancelConfirmText] = useState('');
+    const [cancelReason, setCancelReason] = useState('');
     const [cancelEstimate, setCancelEstimate] = useState(null);
     const [cancelEstimateLoading, setCancelEstimateLoading] = useState(false);
     const [proofByStage, setProofByStage] = useState({});
@@ -316,7 +319,7 @@ const ArtisanOrderDetailPage = () => {
     const openCancelModal = async () => {
         if (!id || cancelling) return;
 
-        setCancelConfirmText('');
+        setCancelReason('');
         setCancelEstimate(null);
         setCancelModalOpen(true);
         setCancelEstimateLoading(true);
@@ -335,10 +338,10 @@ const ArtisanOrderDetailPage = () => {
 
     const handleCancelOrder = async () => {
         if (!id || cancelling) return;
-        if (cancelConfirmText.trim() !== 'Hủy đơn') return;
+        if (!cancelReason.trim()) return;
 
         setCancelling(true);
-        const res = await cancelCustomOrder(id, cancelConfirmText.trim());
+        const res = await cancelCustomOrder(id, cancelReason.trim());
         setCancelling(false);
 
         if (!res.success) {
@@ -354,6 +357,10 @@ const ArtisanOrderDetailPage = () => {
 
     const handleStatusUpdate = async () => {
         if (!id || !statusDraft || statusSubmitting) return;
+        if (isCancelledOrder) {
+            appToast.warning('Đơn hàng đã hủy', 'Không thao tác được.');
+            return;
+        }
 
         const currentStatus = String(order?.status || '').toUpperCase();
         const nextStatus = String(statusDraft || '').toUpperCase();
@@ -380,6 +387,10 @@ const ArtisanOrderDetailPage = () => {
     const handleCompleteStage = async (stage) => {
         const stageId = stage?.stageId ?? stage?.id;
         if (!stageId || submittingStageId) return;
+        if (isCancelledOrder) {
+            appToast.warning('Đơn hàng đã hủy', 'Không thao tác được.');
+            return;
+        }
 
         const completionImageUrl = proofByStage[String(stageId)] || stage?.completionImageUrl || '';
         const notes = notesByStage[String(stageId)] || '';
@@ -419,23 +430,7 @@ const ArtisanOrderDetailPage = () => {
     const closeImagePreview = () => setImagePreviewUrl('');
 
     const openShipmentForm = () => {
-        console.groupCollapsed('[Shipment] Open shipment form');
-        console.log('order:', order);
-        console.log('customerProfile:', customerProfile);
-        console.log('shipmentReady preview:', shipmentReady);
-        console.log('current shipmentForm before open:', shipmentForm);
-        console.groupEnd();
-
-        setProfileApplied(false);
-        setShipmentFormOpen(true);
-        setShipmentForm((prev) => ({
-            ...prev,
-            recipientName: prev.recipientName || shipmentReady.recipientName,
-            recipientPhone: prev.recipientPhone || shipmentReady.recipientPhone,
-            deliveryAddress: prev.deliveryAddress || shipmentReady.deliveryAddress,
-            orderValue: prev.orderValue || String(shipmentReady.orderValue || ''),
-        }));
-        window.setTimeout(() => applyCustomerProfileToShipmentForm(), 0);
+        navigate('/artisan/shipments');
     };
 
     const customerShippingPreview = useMemo(() => {
@@ -608,6 +603,7 @@ const ArtisanOrderDetailPage = () => {
 
     const status = String(order?.status || '').toUpperCase();
     const allowedNextStatuses = getAllowedNextStatuses(status, role);
+    const isCancelledOrder = status === 'CANCELLED' || status === 'CANCELLED_BY_ARTISAN';
     const orderTitle = order?.requestDescription || order?.requestTitle || order?.description || 'Đơn tùy chỉnh';
 
     return (
@@ -744,7 +740,7 @@ const ArtisanOrderDetailPage = () => {
                                                                 folder="stage-proofs"
                                                                 value={proofByStage[String(stageId)] || stage?.completionImageUrl || ''}
                                                                 onChange={(nextValue) => setProofByStage((prev) => ({ ...prev, [String(stageId)]: nextValue }))}
-                                                                disabled={submittingStageId === String(stageId)}
+                                                                disabled={submittingStageId === String(stageId) || isCancelledOrder}
                                                                 nativeFileInputOnly
                                                             />
                                                             <textarea
@@ -752,16 +748,19 @@ const ArtisanOrderDetailPage = () => {
                                                                 placeholder="Ghi chú hoàn thành"
                                                                 value={notesByStage[String(stageId)] || ''}
                                                                 onChange={(e) => setNotesByStage((prev) => ({ ...prev, [String(stageId)]: e.target.value }))}
+                                                                disabled={isCancelledOrder}
                                                             />
                                                             <button
                                                                 type="button"
                                                                 className="btn btn-primary"
-                                                                disabled={submittingStageId === String(stageId) || completed}
+                                                                disabled={submittingStageId === String(stageId) || completed || isCancelledOrder}
                                                                 onClick={() => handleCompleteStage(stage)}
                                                             >
-                                                                {submittingStageId === String(stageId) || completed
-                                                                    ? 'Đã hoàn thành'
-                                                                    : `Đánh dấu hoàn thành giai đoạn ${idx + 1}`}
+                                                                {isCancelledOrder
+                                                                    ? 'Đơn đã hủy'
+                                                                    : submittingStageId === String(stageId) || completed
+                                                                        ? 'Đã hoàn thành'
+                                                                        : `Đánh dấu hoàn thành giai đoạn ${idx + 1}`}
                                                             </button>
                                                         </div>
                                                     )}
@@ -796,7 +795,7 @@ const ArtisanOrderDetailPage = () => {
                                 <h3>Tạo vận đơn</h3>
                                 <p className="muted">Tạo vận đơn cho đơn này trực tiếp từ dashboard artisan.</p>
                                 <div className="shipment-card-actions">
-                                    <button type="button" className="btn btn-primary" onClick={openShipmentForm}>
+                                    <button type="button" className="btn btn-primary" onClick={openShipmentForm} disabled={isCancelledOrder}>
                                         <FiTruck /> Tạo vận đơn
                                     </button>
                                 </div>
@@ -810,7 +809,7 @@ const ArtisanOrderDetailPage = () => {
                                             className="form-input status-select"
                                             value={statusDraft}
                                             onChange={(e) => setStatusDraft(e.target.value)}
-                                            disabled={!allowedNextStatuses.length || statusSubmitting}
+                                            disabled={isCancelledOrder || !allowedNextStatuses.length || statusSubmitting}
                                         >
                                             <option value="">Chọn trạng thái mới</option>
                                             {allowedNextStatuses.map((optionValue) => (
@@ -824,7 +823,7 @@ const ArtisanOrderDetailPage = () => {
                                         type="button"
                                         className="btn btn-outline"
                                         onClick={handleStatusUpdate}
-                                        disabled={!statusDraft || statusSubmitting || !allowedNextStatuses.includes(statusDraft)}
+                                        disabled={isCancelledOrder || !statusDraft || statusSubmitting || !allowedNextStatuses.includes(statusDraft)}
                                     >
                                         {statusSubmitting ? 'Đang cập nhật...' : 'Cập nhật trạng thái'}
                                     </button>
@@ -854,13 +853,13 @@ const ArtisanOrderDetailPage = () => {
                         </aside>
                     </div>
 
-                    {status !== 'COMPLETED' && status !== 'CANCELLED' && (
+                    {!isCancelledOrder && status !== 'COMPLETED' && (
                         <section className="danger-zone">
                             <div className="danger-copy">
                                 <h3>Thao tác nguy hiểm</h3>
                                 <p>Hủy đơn sẽ dừng toàn bộ quy trình của đơn tùy chỉnh này.</p>
                             </div>
-                            <button type="button" className="btn btn-danger" onClick={openCancelModal} disabled={cancelling}>
+                            <button type="button" className="btn btn-danger" onClick={openCancelModal} disabled={isCancelledOrder || cancelling}>
                                 Hủy đơn
                             </button>
                         </section>
@@ -870,7 +869,7 @@ const ArtisanOrderDetailPage = () => {
                         <div className="cancel-modal-overlay" onClick={() => setCancelModalOpen(false)}>
                             <div className="cancel-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title" onClick={(e) => e.stopPropagation()}>
                                 <h3 id="cancel-modal-title">Xác nhận hủy đơn</h3>
-                                <p>Để xác nhận, vui lòng nhập chính xác <strong>Hủy đơn</strong> vào ô bên dưới.</p>
+                                
 
                                 <div className="detail-cancel-estimate">
                                     {cancelEstimateLoading ? (
@@ -889,12 +888,12 @@ const ArtisanOrderDetailPage = () => {
                                     )}
                                 </div>
 
-                                <input
-                                    type="text"
+                                <textarea
+                                    rows="3"
                                     className="form-input"
-                                    placeholder="Nhập: Hủy đơn"
-                                    value={cancelConfirmText}
-                                    onChange={(e) => setCancelConfirmText(e.target.value)}
+                                    placeholder="Nhập lý do hủy đơn"
+                                    value={cancelReason}
+                                    onChange={(e) => setCancelReason(e.target.value)}
                                 />
                                 <div className="cancel-modal-actions">
                                     <button type="button" className="btn btn-outline" onClick={() => setCancelModalOpen(false)} disabled={cancelling}>Đóng</button>
@@ -902,7 +901,7 @@ const ArtisanOrderDetailPage = () => {
                                         type="button"
                                         className="btn btn-danger"
                                         onClick={handleCancelOrder}
-                                        disabled={cancelConfirmText.trim() !== 'Hủy đơn' || cancelling}
+                                        disabled={!cancelReason.trim() || cancelling}
                                     >
                                         {cancelling ? 'Đang hủy...' : 'Hủy đơn'}
                                     </button>
@@ -928,7 +927,7 @@ const ArtisanOrderDetailPage = () => {
                                         <p className="page-kicker">Tạo vận đơn</p>
                                         <h3 id="shipment-modal-title">Điền thông tin giao hàng</h3>
                                     </div>
-                                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setShipmentFormOpen(false)} disabled={shippingSubmitting}>Đóng</button>
+                                    <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate('/artisan/shipments')} disabled={shippingSubmitting}>Đóng</button>
                                 </div>
                                 <p className="muted">Điền thông tin người nhận và thông số kiện hàng để gửi sang hệ thống vận chuyển. {profileLoading ? 'Đang tải profile khách hàng...' : ''}</p>
                                 <div className="shipment-form-grid">
@@ -1012,8 +1011,8 @@ const ArtisanOrderDetailPage = () => {
                                     </label>
                                 </div>
                                 <div className="cancel-modal-actions">
-                                    <button type="button" className="btn btn-primary" onClick={handleCreateShipment} disabled={shippingSubmitting}>
-                                        {shippingSubmitting ? 'Đang tạo...' : 'Tạo vận đơn'}
+                                    <button type="button" className="btn btn-primary" onClick={() => navigate('/artisan/shipments')} disabled={shippingSubmitting}>
+                                        Đi đến trang vận đơn
                                     </button>
                                 </div>
                             </div>

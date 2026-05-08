@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FiAlertCircle, FiCheckCircle, FiExternalLink, FiPackage, FiRefreshCw, FiTruck } from 'react-icons/fi';
+import { FiAlertCircle, FiCheckCircle, FiExternalLink, FiPackage, FiTruck } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import api from '../../cofig/api';
 import { appToast } from '../../lib/appToast';
@@ -101,23 +101,22 @@ const defaultShipmentForm = {
 const ShipmentManagementPage = ({ user, embedded = false }) => {
     const navigate = useNavigate();
     const artisanId = user?.id || user?.artisanId || user?.artisanUuid;
+    void embedded;
 
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState([]);
     const [customOrders, setCustomOrders] = useState([]);
     const [shipments, setShipments] = useState({});
     const [selectedOrderId, setSelectedOrderId] = useState('');
-    const [creating, setCreating] = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
+    const [orderTypeFilter, setOrderTypeFilter] = useState('ALL');
+    const [orderSortDirection, setOrderSortDirection] = useState('DESC');
     const [actioningId, setActioningId] = useState('');
-    const [shipmentFormOpen, setShipmentFormOpen] = useState(false);
     const [shippingSubmitting, setShippingSubmitting] = useState(false);
     const [provinces, setProvinces] = useState([]);
     const [districts, setDistricts] = useState([]);
     const [wards, setWards] = useState([]);
     const [locationLoading, setLocationLoading] = useState({ provinces: false, districts: false, wards: false });
     const [shipmentForm, setShipmentForm] = useState(defaultShipmentForm);
-    const [form, setForm] = useState(defaultShipmentForm);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailOrder, setDetailOrder] = useState(null);
@@ -206,10 +205,26 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
 
     useEffect(() => { loadShipments(); }, [artisanId]);
 
-    const shipmentCandidates = useMemo(() => [
-        ...orders.map((order) => ({ ...order, shipmentSource: 'PAID' })),
-        ...customOrders.map((order) => ({ ...order, shipmentSource: 'CUSTOM', orderId: order?.customOrderId || order?.id })),
-    ], [orders, customOrders]);
+    const shipmentCandidates = useMemo(() => {
+        const toTimestamp = (order) => new Date(order?.createdAt || order?.createAt || order?.orderDate || order?.updateAt || 0).getTime();
+        const mappedOrders = [
+            ...orders.map((order) => ({ ...order, shipmentSource: 'PAID' })),
+            ...customOrders.map((order) => ({ ...order, shipmentSource: 'CUSTOM', orderId: order?.customOrderId || order?.id })),
+        ];
+
+        const filteredOrders = mappedOrders.filter((order) => {
+            const source = String(order?.shipmentSource || '').toUpperCase();
+            if (orderTypeFilter === 'PAID') return source === 'PAID';
+            if (orderTypeFilter === 'CUSTOM') return source === 'CUSTOM';
+            return true;
+        });
+
+        return filteredOrders.sort((a, b) => {
+            const aTime = toTimestamp(a);
+            const bTime = toTimestamp(b);
+            return orderSortDirection === 'ASC' ? aTime - bTime : bTime - aTime;
+        });
+    }, [orders, customOrders, orderTypeFilter, orderSortDirection]);
 
     const selectedOrder = useMemo(() => shipmentCandidates.find((order) => String(order?.orderId || order?.id || order?.customOrderId) === String(selectedOrderId)) || null, [shipmentCandidates, selectedOrderId]);
     const selectedShipment = selectedOrder ? shipments[selectedOrder.orderId || selectedOrder.id] : null;
@@ -527,8 +542,28 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
 
             <section className="shipment-layout">
                 <div className="shipment-list-panel">
-                    <div className="shipment-panel-head">
-                        <h3>Danh sách đơn có thể tạo vận đơn</h3>
+                    <div className="shipment-panel-head shipment-panel-head--stacked">
+                        <div className="shipment-panel-heading">
+                            <h3>Danh sách đơn có thể tạo vận đơn</h3>
+                            <p className="shipment-panel-description">Lọc nhanh theo đơn thường hoặc đơn custom đã hoàn thành, đồng thời sắp xếp theo thời gian tạo.</p>
+                        </div>
+                        <div className="shipment-filter-row">
+                            <label className="shipment-filter-field">
+                                <span>Loại đơn</span>
+                                <select className="form-input" value={orderTypeFilter} onChange={(e) => setOrderTypeFilter(e.target.value)}>
+                                    <option value="ALL">Tất cả</option>
+                                    <option value="PAID">Đơn thường</option>
+                                    <option value="CUSTOM">Đơn custom hoàn thành</option>
+                                </select>
+                            </label>
+                            <label className="shipment-filter-field">
+                                <span>Sắp xếp</span>
+                                <select className="form-input" value={orderSortDirection} onChange={(e) => setOrderSortDirection(e.target.value)}>
+                                    <option value="DESC">Mới nhất trước</option>
+                                    <option value="ASC">Cũ nhất trước</option>
+                                </select>
+                            </label>
+                        </div>
                     </div>
                     {loading ? (
                         <p className="shipment-empty">Đang tải...</p>
