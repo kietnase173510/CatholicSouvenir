@@ -786,10 +786,10 @@ const TemplatesView = ({ user }) => {
                                             <label>Phong cách</label>
                                             <input value={templateForm.style} onChange={(e) => { setTemplateFormDirty(true); setTemplateForm((p) => ({ ...p, style: e.target.value })); }} />
                                         </div>
-                                        <div className="form-field">
+                                        {/* <div className="form-field">
                                             <label>&nbsp;</label>
                                             <label className="checkbox-label"><input type="checkbox" checked={templateForm.isActive} onChange={(e) => { setTemplateFormDirty(true); setTemplateForm((p) => ({ ...p, isActive: e.target.checked })); }} /> Hoạt động</label>
-                                        </div>
+                                        </div> */}
                                     </div>
 
                                     <div className="form-field wide-field">
