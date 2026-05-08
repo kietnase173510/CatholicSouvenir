@@ -117,6 +117,7 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     const [wards, setWards] = useState([]);
     const [locationLoading, setLocationLoading] = useState({ provinces: false, districts: false, wards: false });
     const [shipmentForm, setShipmentForm] = useState(defaultShipmentForm);
+    const [shipmentFormOpen, setShipmentFormOpen] = useState(false);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailOrder, setDetailOrder] = useState(null);
@@ -436,34 +437,39 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
         }
 
         setShippingSubmitting(true);
-        const res = await createShipment({
-            orderId: selectedOrder.orderId,
-            customOrderId: selectedOrder?.customOrderId || selectedOrder?.id || undefined,
-            recipientName: shipmentForm.recipientName.trim(),
-            recipientPhone: shipmentForm.recipientPhone.trim(),
-            deliveryAddress: shipmentForm.deliveryAddress.trim(),
-            toDistrictId: resolvedDistrictId,
-            toWardCode: resolvedWardCode,
-            orderValue: parseInputMoney(shipmentForm.orderValue) || selectedOrder?.total || selectedOrder?.totalPrice || 0,
-            weight: shipmentForm.weight,
-            length: shipmentForm.length,
-            width: shipmentForm.width,
-            height: shipmentForm.height,
-            note: shipmentForm.note.trim(),
-            serviceTypeId: Number(shipmentForm.serviceTypeId || 0),
-            paymentTypeId: Number(shipmentForm.paymentTypeId || 0),
-        });
-        setShippingSubmitting(false);
+        try {
+            const res = await createShipment({
+                orderId: selectedOrder.orderId,
+                customOrderId: selectedOrder?.customOrderId || selectedOrder?.id || undefined,
+                recipientName: shipmentForm.recipientName.trim(),
+                recipientPhone: shipmentForm.recipientPhone.trim(),
+                deliveryAddress: shipmentForm.deliveryAddress.trim(),
+                toDistrictId: resolvedDistrictId,
+                toWardCode: resolvedWardCode,
+                orderValue: parseInputMoney(shipmentForm.orderValue) || selectedOrder?.total || selectedOrder?.totalPrice || 0,
+                weight: shipmentForm.weight,
+                length: shipmentForm.length,
+                width: shipmentForm.width,
+                height: shipmentForm.height,
+                note: shipmentForm.note.trim(),
+                serviceTypeId: Number(shipmentForm.serviceTypeId || 0),
+                paymentTypeId: Number(shipmentForm.paymentTypeId || 0),
+            });
 
-        if (!res.success) {
-            appToast.error('Tạo vận đơn thất bại', res.error || 'Vui lòng thử lại');
-            return;
+            if (!res.success) {
+                appToast.error('Tạo vận đơn thất bại', res.error || 'Vui lòng thử lại');
+                return;
+            }
+
+            await loadShipments();
+            setShipmentFormOpen(false);
+            resetShipmentForm();
+            appToast.success(res.message || 'Tạo vận đơn thành công');
+        } catch (error) {
+            appToast.error('Tạo vận đơn thất bại', error?.message || 'Vui lòng thử lại');
+        } finally {
+            setShippingSubmitting(false);
         }
-
-        setShipmentFormOpen(false);
-        resetShipmentForm();
-        appToast.success('Đã tạo vận đơn thành công');
-        await loadShipments();
     };
 
     const handleOpenOrderDetail = async (order) => {
