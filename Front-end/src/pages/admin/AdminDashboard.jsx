@@ -413,7 +413,7 @@ const AdminDashboard = () => {
                                 <span>Doanh thu nền tảng</span>
                                 <strong>{formatCurrency(dashboard.platformFinancials.totalPlatformRevenue)}</strong>
                             </div>
-                            <div className="status-chart-row status-chart-row--meta">
+                            {/* <div className="status-chart-row status-chart-row--meta">
                                 <span>Hoa hồng đã kiếm</span>
                                 <strong>{formatCurrency(dashboard.platformFinancials.totalCommissionEarned)}</strong>
                             </div>
@@ -424,7 +424,7 @@ const AdminDashboard = () => {
                             <div className="status-chart-row status-chart-row--meta">
                                 <span>Số dư bị khóa</span>
                                 <strong>{formatCurrency(dashboard.platformFinancials.totalLockedBalance)}</strong>
-                            </div>
+                            </div> */}
                             <div className="status-chart-row status-chart-row--meta">
                                 <span>Tổng hoàn tiền</span>
                                 <strong>{formatCurrency(dashboard.refundStats.totalRefundAmount)}</strong>

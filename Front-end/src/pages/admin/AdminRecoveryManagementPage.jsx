@@ -1,26 +1,46 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { Navigate } from 'react-router-dom';
-import { FiAlertTriangle, FiCheckCircle, FiRefreshCw, FiSearch, FiShield, FiSlash, FiPhone, FiMail } from 'react-icons/fi';
+import { FiAlertTriangle, FiCheckCircle, FiEye, FiRefreshCw, FiSearch, FiSlash, FiX } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { appToast } from '../../lib/appToast';
-import {
-    blacklistArtisanApi,
-    getRecoveryTasksApi,
-    markRecoveryTaskRecoveredApi,
-    removeArtisanBlacklistApi,
-} from '../../services/recoveryService';
+import { blacklistArtisanApi, getRecoveryTasksApi, markRecoveryTaskRecoveredApi } from '../../services/recoveryService';
 import './admin-common.css';
 import './AdminRecoveryManagementPage.css';
 
-const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`;
+const formatCurrency = (value) => {
+    const numericValue = Number(value || 0);
+    return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(numericValue)} đ`;
+};
 const formatDateTime = (value) => (value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '—');
+const formatDetailValue = (value) => (value === null || value === undefined || value === '' ? '—' : value);
 
-const getInitials = (name) => {
-    const words = String(name || '').trim().split(/\s+/).filter(Boolean);
-    if (!words.length) return 'U';
-    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-    return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
+const formatRawNumber = (value) => {
+    const numericValue = Number(value);
+    if (Number.isNaN(numericValue)) return formatDetailValue(value);
+    return new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(numericValue);
+};
+
+const translateRecoveryReason = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return '—';
+
+    const lower = text.toLowerCase();
+    const availableMatch = text.match(/Available:\s*([+-]?[\d,.]+)\s*VND/i);
+    const requiredMatch = text.match(/Required:\s*([+-]?[\d,.]+)\s*VND/i);
+
+    if (lower.startsWith('cancel order - insufficient balance')) {
+        const available = formatRawNumber(availableMatch?.[1] || '0');
+        const required = formatRawNumber(requiredMatch?.[1] || '0');
+        return `Hủy đơn hàng - Số dư không đủ. Số dư hiện có: ${available} đ, Số tiền cần thu hồi: ${required} đ`;
+    }
+
+    return text
+        .replace(/cancel order/gi, 'Hủy đơn hàng')
+        .replace(/insufficient balance/gi, 'Số dư không đủ')
+        .replace(/available/gi, 'Số dư hiện có')
+        .replace(/required/gi, 'Số tiền cần thu hồi')
+        .replace(/([+-]?[\d,.]+)\s*VND/gi, (_, amount) => `${formatRawNumber(amount)} đ`);
 };
 
 const AdminRecoveryManagementPage = () => {
@@ -33,6 +53,7 @@ const AdminRecoveryManagementPage = () => {
     const [tasks, setTasks] = useState([]);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
+    const [selectedTask, setSelectedTask] = useState(null);
 
     const loadTasks = async () => {
         setLoading(true);
@@ -60,7 +81,7 @@ const AdminRecoveryManagementPage = () => {
             .sort((a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0))
             .filter((task) => {
                 const matchesStatus = statusFilter === 'ALL' || String(task?.status || '').toUpperCase() === statusFilter;
-                const text = [task?.artisanName, task?.artisanId, task?.email, task?.phone, task?.orderId, task?.reason]
+                const text = [task?.artisanName, task?.customerName, task?.orderId, task?.reason]
                     .map((item) => String(item || '').toLowerCase())
                     .join(' ');
                 const matchesKeyword = !keyword || text.includes(keyword);
@@ -92,16 +113,11 @@ const AdminRecoveryManagementPage = () => {
 
         appToast.success('Đã đánh dấu recovery task là hoàn thành');
         await loadTasks();
+        setSelectedTask((prev) => (prev?.taskId === task.taskId ? { ...prev, status: 'RECOVERED', actionCompleted: true } : prev));
     };
 
     const handleBlacklist = async (task) => {
         if (!task?.artisanId) return;
-        const reason = window.prompt('Lý do blacklist nghệ nhân này:');
-        if (reason === null) return;
-        if (!reason.trim()) {
-            appToast.warning('Vui lòng nhập lý do blacklist');
-            return;
-        }
         if (!window.confirm('Xác nhận blacklist nghệ nhân? Họ sẽ không thể nhận đơn mới.')) return;
 
         setSubmittingId(String(task.artisanId));
@@ -114,23 +130,6 @@ const AdminRecoveryManagementPage = () => {
         }
 
         appToast.success('Đã blacklist nghệ nhân');
-        await loadTasks();
-    };
-
-    const handleRemoveBlacklist = async (task) => {
-        if (!task?.artisanId) return;
-        if (!window.confirm('Xác nhận gỡ blacklist cho nghệ nhân này?')) return;
-
-        setSubmittingId(String(task.artisanId));
-        const res = await removeArtisanBlacklistApi(task.artisanId);
-        setSubmittingId('');
-
-        if (!res.success) {
-            appToast.error('Không thể gỡ blacklist', res.error || 'Vui lòng thử lại');
-            return;
-        }
-
-        appToast.success('Đã gỡ blacklist nghệ nhân');
         await loadTasks();
     };
 
@@ -184,7 +183,7 @@ const AdminRecoveryManagementPage = () => {
                                 <FiSearch className="control-icon" />
                                 <input
                                     type="text"
-                                    placeholder="Tìm theo tên, email, phone, order ID..."
+                                    placeholder="Tìm theo nghệ nhân, khách hàng, email, phone, order ID..."
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
                                 />
@@ -202,9 +201,8 @@ const AdminRecoveryManagementPage = () => {
                                 <thead>
                                     <tr>
                                         <th>NGHỆ NHÂN</th>
-                                        <th>LIÊN HỆ</th>
+                                        <th>KHÁCH HÀNG</th>
                                         <th>SỐ TIỀN</th>
-                                        <th>ĐƠN HÀNG</th>
                                         <th>NGÀY TẠO</th>
                                         <th>TRẠNG THÁI</th>
                                         <th>HÀNH ĐỘNG</th>
@@ -213,7 +211,7 @@ const AdminRecoveryManagementPage = () => {
                                 <tbody>
                                     {filteredTasks.length === 0 ? (
                                         <tr>
-                                            <td colSpan="7" className="empty-state">
+                                            <td colSpan="6" className="empty-state">
                                                 <div className="admin-empty-state">
                                                     <FiAlertTriangle style={{ fontSize: '2rem' }} />
                                                     <p>Không có recovery task nào</p>
@@ -224,33 +222,23 @@ const AdminRecoveryManagementPage = () => {
                                         filteredTasks.map((task) => {
                                             const status = String(task?.status || 'PENDING').toUpperCase();
                                             const isPending = status === 'PENDING';
-                                            const disabled = submittingId && submittingId !== String(task?.taskId) && submittingId !== String(task?.artisanId);
 
                                             return (
                                                 <tr key={task?.taskId} className={status === 'RECOVERED' ? 'recovered-row' : 'pending-row'}>
                                                     <td>
                                                         <div className="admin-recovery-artisan-cell">
-                                                            <span className="admin-recovery-avatar">{getInitials(task?.artisanName)}</span>
                                                             <div>
                                                                 <p className="admin-recovery-name">{task?.artisanName || '—'}</p>
-                                                                <span className="admin-recovery-sub">ID: {task?.artisanId || '—'}</span>
                                                             </div>
                                                         </div>
                                                     </td>
                                                     <td>
                                                         <div className="admin-recovery-contact">
-                                                            <span><FiMail /> {task?.email || '—'}</span>
-                                                            <span><FiPhone /> {task?.phone || '—'}</span>
+                                                            <span className="admin-recovery-name">{task?.customerName || '—'}</span>
                                                         </div>
                                                     </td>
                                                     <td>
                                                         <strong className="admin-recovery-amount">{formatCurrency(task?.refundAmount || 0)}</strong>
-                                                    </td>
-                                                    <td>
-                                                        <div className="admin-recovery-order">
-                                                            <span className="mono">{task?.orderId || '—'}</span>
-                                                            <small>{task?.reason || '—'}</small>
-                                                        </div>
                                                     </td>
                                                     <td>{formatDateTime(task?.createdAt)}</td>
                                                     <td>
@@ -260,35 +248,13 @@ const AdminRecoveryManagementPage = () => {
                                                     </td>
                                                     <td>
                                                         <div className="admin-recovery-actions">
-                                                            {isPending ? (
-                                                                <>
-                                                                    <button
-                                                                        type="button"
-                                                                        className="btn-action btn-success"
-                                                                        disabled={Boolean(submittingId) || disabled}
-                                                                        onClick={() => handleMarkRecovered(task)}
-                                                                    >
-                                                                        <FiCheckCircle /> Đánh dấu
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        className="btn-action btn-danger"
-                                                                        disabled={Boolean(submittingId) || disabled}
-                                                                        onClick={() => handleBlacklist(task)}
-                                                                    >
-                                                                        <FiSlash /> Blacklist
-                                                                    </button>
-                                                                </>
-                                                            ) : (
-                                                                <button
-                                                                    type="button"
-                                                                    className="btn-action btn-outline"
-                                                                    disabled={Boolean(submittingId) || disabled}
-                                                                    onClick={() => handleRemoveBlacklist(task)}
-                                                                >
-                                                                    <FiShield /> Gỡ blacklist
-                                                                </button>
-                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                className="btn-action btn-outline"
+                                                                onClick={() => setSelectedTask(task)}
+                                                            >
+                                                                <FiEye /> Chi tiết
+                                                            </button>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -301,6 +267,88 @@ const AdminRecoveryManagementPage = () => {
                     </section>
                 </>
             )}
+
+            {selectedTask ? (
+                <div className="admin-recovery-modal-backdrop" role="presentation" onClick={() => setSelectedTask(null)}>
+                    <aside
+                        className="admin-recovery-drawer"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="recovery-detail-title"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="admin-recovery-modal-header">
+                            <div>
+                                <p className="admin-recovery-modal-eyebrow">Chi tiết recovery task</p>
+                                <h2 id="recovery-detail-title">{selectedTask?.artisanName || '—'} → {selectedTask?.customerName || '—'}</h2>
+                            </div>
+                            <button type="button" className="admin-recovery-modal-close" onClick={() => setSelectedTask(null)} aria-label="Đóng drawer">
+                                <FiX />
+                            </button>
+                        </div>
+
+                        <div className="admin-recovery-modal-grid">
+                            <div className="admin-recovery-modal-card admin-recovery-modal-full">
+                                <h3>Thông tin chung</h3>
+                                <dl className="admin-recovery-general-grid">
+                                    <div><dt>Task ID</dt><dd className="mono">{formatDetailValue(selectedTask?.taskId)}</dd></div>
+                                    <div><dt>Order ID</dt><dd className="mono">{formatDetailValue(selectedTask?.orderId)}</dd></div>
+                                    <div><dt>Số tiền hoàn</dt><dd>{formatCurrency(selectedTask?.refundAmount || 0)}</dd></div>
+                                    <div><dt>Trạng thái</dt><dd>{formatDetailValue(selectedTask?.status)}</dd></div>
+                                    <div><dt>Ngày tạo</dt><dd>{formatDateTime(selectedTask?.createdAt)}</dd></div>
+                                    <div><dt>Đã xử lý</dt><dd>{selectedTask?.actionCompleted ? 'Có' : 'Không'}</dd></div>
+                                </dl>
+                            </div>
+
+                            <div className="admin-recovery-modal-card">
+                                <h3>Thông tin nghệ nhân</h3>
+                                <dl>
+                                    <div><dt>ID</dt><dd className="mono">{formatDetailValue(selectedTask?.artisanId)}</dd></div>
+                                    <div><dt>Tên</dt><dd>{formatDetailValue(selectedTask?.artisanName)}</dd></div>
+                                    <div><dt>Email</dt><dd>{formatDetailValue(selectedTask?.email)}</dd></div>
+                                    <div><dt>Số điện thoại</dt><dd>{formatDetailValue(selectedTask?.phone)}</dd></div>
+                                    <div><dt>Số dư khả dụng</dt><dd>{selectedTask?.artisanAvailableBalance === null || selectedTask?.artisanAvailableBalance === undefined ? '—' : formatCurrency(selectedTask?.artisanAvailableBalance)}</dd></div>
+                                    <div><dt>Số dư bị khóa</dt><dd>{selectedTask?.artisanLockedBalance === null || selectedTask?.artisanLockedBalance === undefined ? '—' : formatCurrency(selectedTask?.artisanLockedBalance)}</dd></div>
+                                </dl>
+                            </div>
+
+                            <div className="admin-recovery-modal-card">
+                                <h3>Thông tin khách hàng</h3>
+                                <dl>
+                                    <div><dt>ID</dt><dd className="mono">{formatDetailValue(selectedTask?.customerId)}</dd></div>
+                                    <div><dt>Tên</dt><dd>{formatDetailValue(selectedTask?.customerName)}</dd></div>
+                                    <div><dt>Email</dt><dd>{formatDetailValue(selectedTask?.customerEmail)}</dd></div>
+                                    <div><dt>Số điện thoại</dt><dd>{formatDetailValue(selectedTask?.customerPhone)}</dd></div>
+                                </dl>
+                            </div>
+
+                            <div className="admin-recovery-modal-card admin-recovery-modal-full">
+                                <h3>Lý do thu hồi</h3>
+                                <p>{translateRecoveryReason(selectedTask?.reason)}</p>
+                            </div>
+                        </div>
+
+                        <div className="admin-recovery-drawer-actions">
+                            <button
+                                type="button"
+                                className="btn-action btn-success"
+                                disabled={Boolean(submittingId) || String(selectedTask?.status || '').toUpperCase() !== 'PENDING'}
+                                onClick={() => handleMarkRecovered(selectedTask)}
+                            >
+                                <FiCheckCircle /> Đánh dấu đã thu hồi
+                            </button>
+                            <button
+                                type="button"
+                                className="btn-action btn-danger"
+                                disabled={Boolean(submittingId) || !selectedTask?.artisanId}
+                                onClick={() => handleBlacklist(selectedTask)}
+                            >
+                                <FiSlash /> Blacklist
+                            </button>
+                        </div>
+                    </aside>
+                </div>
+            ) : null}
         </div>
     );
 };

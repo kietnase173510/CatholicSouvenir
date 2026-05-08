@@ -84,23 +84,20 @@
     padding-left: 2.65rem;
 }
 
+.admin-recovery-table th,
+.admin-recovery-table td {
+    text-align: center;
+    vertical-align: middle;
+}
+
 .admin-recovery-table .admin-recovery-artisan-cell {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.8rem;
 }
 
-.admin-recovery-avatar {
-    width: 42px;
-    height: 42px;
-    border-radius: 999px;
-    background: linear-gradient(135deg, #7c3aed, #ec4899);
-    color: #fff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-}
+/* avatar removed */
 
 .admin-recovery-name,
 .admin-recovery-order,
@@ -117,6 +114,7 @@
 
 .admin-recovery-contact {
     display: grid;
+    justify-items: center;
     gap: 0.25rem;
     color: #334155;
     font-size: 0.92rem;
@@ -154,6 +152,160 @@
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
+    justify-content: center;
+}
+
+.admin-recovery-actions .btn-action,
+.admin-recovery-drawer-actions .btn-action {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+    text-align: center;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.admin-recovery-actions .btn-action {
+    padding: 0.7rem 0.95rem;
+    width: max-content;
+    max-width: 100%;
+}
+
+.admin-recovery-drawer-actions .btn-action {
+    flex: 1 1 220px;
+    padding-inline: 1rem;
+}
+
+.admin-recovery-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(6px);
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    z-index: 60;
+}
+
+.admin-recovery-drawer {
+    width: min(100%, 860px);
+    height: 100vh;
+    margin-left: auto;
+    overflow: auto;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: -30px 0 80px rgba(15, 23, 42, 0.25);
+    padding: 1.5rem;
+    border-top-left-radius: 28px;
+    border-bottom-left-radius: 28px;
+}
+
+.admin-recovery-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.admin-recovery-modal-eyebrow {
+    margin: 0 0 0.35rem;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.admin-recovery-modal-header h2,
+.admin-recovery-modal-card h3 {
+    margin: 0;
+    color: #0f172a;
+}
+
+.admin-recovery-modal-close {
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f5f9;
+    color: #334155;
+    cursor: pointer;
+}
+
+.admin-recovery-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.admin-recovery-general-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem 1rem;
+}
+
+.admin-recovery-modal-full {
+    grid-column: 1 / -1;
+}
+
+.admin-recovery-drawer-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    padding-top: 1rem;
+    margin-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+}
+
+.admin-recovery-modal-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 1rem;
+    background: #fff;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+}
+
+.admin-recovery-modal-card h3 {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.admin-recovery-modal-card dl {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0.9rem 0 0;
+}
+
+.admin-recovery-modal-card dl div {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.admin-recovery-modal-card dt {
+    color: #64748b;
+    font-size: 0.88rem;
+}
+
+.admin-recovery-modal-card dd {
+    margin: 0;
+    color: #0f172a;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.admin-recovery-modal-full {
+    grid-column: 1 / -1;
+}
+
+.admin-recovery-modal-full p {
+    margin: 0.9rem 0 0;
+    color: #334155;
+    line-height: 1.6;
 }
 
 .admin-recovery-skeleton-grid {
@@ -177,18 +329,35 @@
 
 @media (max-width: 1200px) {
     .admin-recovery-stats-grid,
-    .admin-recovery-skeleton-grid {
+    .admin-recovery-skeleton-grid,
+    .admin-recovery-modal-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-recovery-drawer {
+        width: min(100%, 720px);
     }
 }
 
 @media (max-width: 768px) {
     .admin-recovery-stats-grid,
-    .admin-recovery-skeleton-grid {
+    .admin-recovery-skeleton-grid,
+    .admin-recovery-modal-grid,
+    .admin-recovery-general-grid {
         grid-template-columns: 1fr;
     }
 
     .admin-recovery-actions {
+        flex-direction: column;
+    }
+
+    .admin-recovery-drawer {
+        width: 100%;
+        border-radius: 0;
+        padding: 1rem;
+    }
+
+    .admin-recovery-drawer-actions {
         flex-direction: column;
     }
 }
