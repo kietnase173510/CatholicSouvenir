@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FiCalendar, FiCheckCircle, FiClock, FiDollarSign, FiFileText, FiMail, FiPhone, FiTruck, FiUser } from 'react-icons/fi';
 import { useNavigate, useParams } from 'react-router-dom';
 import ImageUpload from '../../components/ui/ImageUpload';
@@ -10,6 +10,7 @@ import {
     getCustomOrderDetail,
     getCustomOrderRefundEstimate,
     getCustomOrderStages,
+    getUserProfileById,
     updateCustomOrderStatus,
     uploadStageProof,
 } from '../../services/customRequestService';
@@ -98,6 +99,20 @@ const mapLocationItem = (item) => ({
     name: item?.name || item?.province_name || item?.district_name || item?.ward_name || '',
 });
 
+const normalizeLocationText = (value) =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+const findLocationCodeByName = (items, name) => {
+    const target = normalizeLocationText(name);
+    if (!target) return '';
+    const found = items.find((item) => normalizeLocationText(item?.name) === target);
+    return found?.code || '';
+};
+
 const ArtisanOrderDetailPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -139,7 +154,11 @@ const ArtisanOrderDetailPage = () => {
     const [provinces, setProvinces] = useState([]);
     const [districts, setDistricts] = useState([]);
     const [wards, setWards] = useState([]);
+    const [customerProfile, setCustomerProfile] = useState(null);
+    const [profileLoading, setProfileLoading] = useState(false);
+    const [profileApplied, setProfileApplied] = useState(false);
     const [locationLoading, setLocationLoading] = useState({ provinces: false, districts: false, wards: false });
+    const customerAccountId = order?.accountId || order?.customerAccountId || order?.customer?.accountId || order?.customerId || '';
 
     const loadAll = async () => {
         setLoading(true);
@@ -164,6 +183,80 @@ const ArtisanOrderDetailPage = () => {
         loadAll();
     }, [id]);
 
+    useEffect(() => {
+        if (!customerAccountId) {
+            setCustomerProfile(null);
+            setProfileApplied(false);
+            setProfileLoading(false);
+            return;
+        }
+
+        let cancelled = false;
+        setProfileLoading(true);
+
+        const loadProfile = async () => {
+            const res = await getUserProfileById(customerAccountId);
+            if (cancelled) return;
+
+            if (res.success) {
+                setCustomerProfile(res.data || null);
+            } else {
+                setCustomerProfile(null);
+            }
+            setProfileLoading(false);
+        };
+
+        loadProfile();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [customerAccountId]);
+
+    const applyCustomerProfileToShipmentForm = useCallback(() => {
+        const profile = customerProfile || {};
+        const mergedAddress = [profile?.address, profile?.ward, profile?.district, profile?.city].filter(Boolean).join(', ');
+        const provinceCode = findLocationCodeByName(provinces, profile?.city || profile?.province || profile?.provinceName);
+        const districtCode = findLocationCodeByName(districts, profile?.district || profile?.districtName);
+        const wardCode = findLocationCodeByName(wards, profile?.ward || profile?.wardName);
+
+        console.groupCollapsed('[Shipment] Apply customer profile to form');
+        console.log('profile:', profile);
+        console.log('mergedAddress:', mergedAddress);
+        console.log('resolved provinceCode:', provinceCode);
+        console.log('resolved districtCode:', districtCode);
+        console.log('resolved wardCode:', wardCode);
+        console.log('current provinces:', provinces);
+        console.log('current districts:', districts);
+        console.log('current wards:', wards);
+        console.groupEnd();
+
+        setShipmentForm((prev) => ({
+            ...prev,
+            recipientName: profile?.fullName || order?.recipientName || order?.customerName || prev.recipientName || '',
+            recipientPhone: profile?.phone || order?.recipientPhone || order?.customerPhone || prev.recipientPhone || '',
+            deliveryAddress: mergedAddress || order?.deliveryAddress || order?.shippingAddress || prev.deliveryAddress || '',
+            provinceCode: provinceCode || prev.provinceCode,
+            districtCode: districtCode || prev.districtCode,
+            wardCode: wardCode || prev.wardCode,
+            orderValue: String(order?.totalPrice || prev.orderValue || ''),
+        }));
+        setProfileApplied(true);
+    }, [customerProfile, districts, order, provinces, wards]);
+
+    useEffect(() => {
+        if (!shipmentFormOpen) return;
+        if (!customerProfile && !order) return;
+
+        console.groupCollapsed('[Shipment] Re-apply profile while modal open');
+        console.log('shipmentFormOpen:', shipmentFormOpen);
+        console.log('customerProfile:', customerProfile);
+        console.log('order:', order);
+        console.groupEnd();
+
+        applyCustomerProfileToShipmentForm();
+    }, [shipmentFormOpen, customerProfile, order, applyCustomerProfileToShipmentForm]);
+
     const progress = useMemo(() => {
         if (!stages.length) return 0;
         const done = stages.filter(isCompleted).length;
@@ -173,16 +266,25 @@ const ArtisanOrderDetailPage = () => {
     const activeStage = useMemo(() => stages.find(isActiveStage) || null, [stages]);
 
     const shipmentReady = useMemo(() => {
-        const phone = String(order?.recipientPhone || order?.customerPhone || order?.shippingPhone || '').trim();
-        const address = String(order?.deliveryAddress || order?.shippingAddress || '').trim();
-        const name = String(order?.recipientName || order?.customerName || '').trim();
+        const profile = customerProfile || {};
+        const phone = String(
+            profile?.phone || order?.recipientPhone || order?.customerPhone || order?.shippingPhone || ''
+        ).trim();
+        const address = String(
+            profile?.address
+            || [profile?.ward, profile?.district, profile?.city].filter(Boolean).join(', ')
+            || order?.deliveryAddress
+            || order?.shippingAddress
+            || ''
+        ).trim();
+        const name = String(profile?.fullName || order?.recipientName || order?.customerName || '').trim();
         return {
             recipientName: shipmentForm.recipientName || name,
             recipientPhone: shipmentForm.recipientPhone || phone,
             deliveryAddress: shipmentForm.deliveryAddress || address,
             orderValue: shipmentForm.orderValue || order?.totalPrice || 0,
         };
-    }, [order, shipmentForm]);
+    }, [order, shipmentForm, customerProfile]);
 
     const selectedProvince = useMemo(
         () => provinces.find((item) => item.code === shipmentForm.provinceCode) || null,
@@ -203,6 +305,7 @@ const ArtisanOrderDetailPage = () => {
             }));
             setDistricts([]);
             setWards([]);
+            setProfileApplied(false);
         }
     }, [shipmentFormOpen]);
 
@@ -316,6 +419,14 @@ const ArtisanOrderDetailPage = () => {
     const closeImagePreview = () => setImagePreviewUrl('');
 
     const openShipmentForm = () => {
+        console.groupCollapsed('[Shipment] Open shipment form');
+        console.log('order:', order);
+        console.log('customerProfile:', customerProfile);
+        console.log('shipmentReady preview:', shipmentReady);
+        console.log('current shipmentForm before open:', shipmentForm);
+        console.groupEnd();
+
+        setProfileApplied(false);
         setShipmentFormOpen(true);
         setShipmentForm((prev) => ({
             ...prev,
@@ -324,7 +435,18 @@ const ArtisanOrderDetailPage = () => {
             deliveryAddress: prev.deliveryAddress || shipmentReady.deliveryAddress,
             orderValue: prev.orderValue || String(shipmentReady.orderValue || ''),
         }));
+        window.setTimeout(() => applyCustomerProfileToShipmentForm(), 0);
     };
+
+    const customerShippingPreview = useMemo(() => {
+        const profile = customerProfile || {};
+        return {
+            fullName: profile?.fullName || order?.customerName || 'Khách hàng',
+            email: profile?.email || order?.customerEmail || '—',
+            phone: profile?.phone || order?.customerPhone || '—',
+            address: profile?.address || order?.deliveryAddress || order?.shippingAddress || '—',
+        };
+    }, [customerProfile, order]);
 
     useEffect(() => {
         const loadProvinces = async () => {
@@ -409,12 +531,12 @@ const ArtisanOrderDetailPage = () => {
         console.log('selected province:', selectedProvince);
         console.log('selected district:', selectedDistrict);
         console.log('selected ward code:', wardCode);
-        console.log('resolved orderId:', shipmentOrderId);
+        console.log('resolved orderId:', shipmentOrderId, '(will send null for this page)');
         console.groupEnd();
 
-        if (!shipmentOrderId || shippingSubmitting) {
-            console.warn('[Shipment] Skip create shipment because orderId is missing or request is already in progress.');
-            appToast.error('Thiếu mã đơn hàng', 'Không xác định được orderId/customOrderId để tạo vận đơn.');
+        if (shippingSubmitting) {
+            console.warn('[Shipment] Skip create shipment because request is already in progress.');
+            appToast.error('Đang xử lý', 'Vui lòng chờ yêu cầu hiện tại hoàn tất.');
             return;
         }
 
@@ -439,7 +561,7 @@ const ArtisanOrderDetailPage = () => {
         }
 
         const payload = {
-            orderId: shipmentOrderId,
+            orderId: null,
             customOrderId: order?.customOrderId || order?.id || undefined,
             recipientName,
             recipientPhone,
@@ -659,9 +781,14 @@ const ArtisanOrderDetailPage = () => {
                                 <div className="person-row">
                                     <span className="person-icon"><FiUser /></span>
                                     <div>
-                                        <strong>{order?.customerName || 'Khách hàng'}</strong>
-                                        <p><FiMail /> {order?.customerEmail || '—'}</p>
+                                        <strong>{customerShippingPreview.fullName}</strong>
+                                        <p><FiMail /> {customerShippingPreview.email}</p>
+                                        <p><FiPhone /> {customerShippingPreview.phone}</p>
                                     </div>
+                                </div>
+                                <div className="customer-shipping-preview">
+                                    <p><strong>Địa chỉ:</strong> {customerShippingPreview.address}</p>
+                                    {profileLoading && <p className="muted">Đang tải hồ sơ khách hàng...</p>}
                                 </div>
                             </article>
 
@@ -801,7 +928,7 @@ const ArtisanOrderDetailPage = () => {
                                     </div>
                                     <button type="button" className="btn btn-outline btn-sm" onClick={() => setShipmentFormOpen(false)} disabled={shippingSubmitting}>Đóng</button>
                                 </div>
-                                <p className="muted">Điền thông tin người nhận và thông số kiện hàng để gửi sang hệ thống vận chuyển.</p>
+                                <p className="muted">Điền thông tin người nhận và thông số kiện hàng để gửi sang hệ thống vận chuyển. {profileLoading ? 'Đang tải profile khách hàng...' : ''}</p>
                                 <div className="shipment-form-grid">
                                     <label className="shipment-field">
                                         <span>Tên người nhận</span>

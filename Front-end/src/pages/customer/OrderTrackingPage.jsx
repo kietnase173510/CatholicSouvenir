@@ -338,7 +338,7 @@ const OrderTrackingPage = () => {
                                 <div><FiUser /><span>Người nhận</span><strong>{order.fullName || '—'}</strong></div>
                                 <div><FiTruck /><span>Trạng thái</span><strong>{statusMeta.label}</strong></div>
                                 <div className="full"><FiHash /><span>Mã đơn</span><strong>{order.orderId}</strong></div>
-                                <div className="full"><FiTruck /><span>Địa chỉ</span><strong>{order.shippingAddress || '—'}</strong></div>
+                                <div className="full"><FiTruck /><span>Địa chỉ</span><strong>{shipment?.deliveryAddress || order.deliveryAddress || '—'}</strong></div>
                             </div>
                         </section>
 
@@ -390,7 +390,7 @@ const OrderTrackingPage = () => {
                             </div>
                             <div className="summary-box">
                                 <p><span>Tổng tiền</span><strong>{formatCurrency(order.total)}</strong></p>
-                                <p><span>Phí vận chuyển</span><strong>{formatCurrency(shipment?.shippingFee || 0)}</strong></p>
+                                <p><span>Phí vận chuyển</span><strong>{formatCurrency(order.shippingFee ?? shipment?.shippingFee ?? 0)}</strong></p>
                                 <p><span>Khách hàng</span><strong>{order.fullName || '—'}</strong></p>
                                 <p><span>Thanh toán</span><strong>{order.paymentMethod || '—'}</strong></p>
                             </div>

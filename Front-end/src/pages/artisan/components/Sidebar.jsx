@@ -50,6 +50,7 @@ const Sidebar = ({ user, activeView, setActiveView, onLogout, isOpen = false, on
                 { id: 'readyOrders', icon: <FiPackage />, label: 'Quản lí đơn hàng', badge: null },
                 { id: 'requests', icon: <FiFileText />, label: 'Yêu cầu từ khách', badge: null },
                 { id: 'customOrders', icon: <FiClipboard />, label: 'Đơn tùy chỉnh', badge: null },
+                { id: 'templateOrders', icon: <FiGrid />, label: 'Đơn hàng Template', badge: null },
                 { id: 'shipments', icon: <FiRepeat />, label: 'Vận đơn', badge: null },
             ],
         },

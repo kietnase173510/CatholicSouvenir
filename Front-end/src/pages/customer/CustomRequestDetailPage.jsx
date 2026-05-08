@@ -16,9 +16,10 @@ import {
 import { appToast } from '../../lib/appToast';
 import { getConversationsByRequest, startConversation } from '../../services/chatService';
 import {
-    rejectCustomOrder,
+    cancelCustomOrder,
     confirmCustomOrder,
     getCustomOrderByRequest,
+    getCustomOrderRefundEstimate,
     getCustomOrderStages,
     getCustomRequestDetail,
     getCustomerCustomOrders,
@@ -82,6 +83,18 @@ const getStageStatusMeta = (status) => {
 
 const getStageId = (stage) => stage?.stageId ?? stage?.id;
 
+const translateRefundReason = (reason) => {
+    const text = String(reason || '').trim();
+    if (!text) return '—';
+
+    const translations = {
+        'Stage completed - no refund': 'Giai đoạn đã hoàn thành - không hoàn tiền',
+        'Stage not started - full refund': 'Giai đoạn chưa bắt đầu - hoàn tiền toàn bộ',
+    };
+
+    return translations[text] || text;
+};
+
 const StatCard = ({ label, value, subtext }) => (
     <div className="detail-stat-card">
         <div>
@@ -108,15 +121,17 @@ const CustomRequestDetailPage = () => {
     const [confirmModalOpen, setConfirmModalOpen] = useState(false);
     const [pendingArtisan, setPendingArtisan] = useState(null);
     const [confirmingOrder, setConfirmingOrder] = useState(false);
-    const [rejectModalOpen, setRejectModalOpen] = useState(false);
-    const [rejectReason, setRejectReason] = useState('');
-    const [rejectingOrder, setRejectingOrder] = useState(false);
+    const [cancelModalOpen, setCancelModalOpen] = useState(false);
+    const [cancelReason, setCancelReason] = useState('');
+    const [cancellingOrder, setCancellingOrder] = useState(false);
+    const [cancelRefundEstimate, setCancelRefundEstimate] = useState(null);
+    const [cancelEstimateLoading, setCancelEstimateLoading] = useState(false);
     const [orderLookupLoading, setOrderLookupLoading] = useState(false);
 
     const requestStatus = String(request?.status || '').toUpperCase();
     const statusMeta = getStatusMeta(requestStatus);
     const StatusIcon = statusMeta.icon;
-    const aiImageUrl = request?.aiGeneratedImageUrl || request?.aiImageUrl || request?.generatedImageUrl || '';
+    const aiImageUrl = request?.aiConceptImageUrl || request?.aiGeneratedImageUrl || request?.aiImageUrl || request?.generatedImageUrl || '';
     const artisan = request?.artisan || request?.confirmedArtisan || request?.selectedArtisan || null;
     const totalPrice = Number(request?.totalPrice || stages.reduce((sum, stage) => sum + Number(stage?.amount || 0), 0));
     const paidAmount = useMemo(() => stages
@@ -290,8 +305,15 @@ const CustomRequestDetailPage = () => {
         }
 
         const url = typeof res.data === 'string' ? res.data : '';
-        if (url) setRequest((prev) => ({ ...prev, aiGeneratedImageUrl: url }));
-        else await refreshDetail();
+        if (url) {
+            setRequest((prev) => ({
+                ...prev,
+                aiConceptImageUrl: url,
+                aiGeneratedImageUrl: url,
+            }));
+        } else {
+            await refreshDetail();
+        }
         appToast.success('Đã tạo lại ảnh AI');
     };
 
@@ -381,40 +403,54 @@ const CustomRequestDetailPage = () => {
         await loadOrderStages(request?.requestId || id);
     };
 
-    const openRejectModal = () => {
-        if (rejectingOrder || confirmingOrder || orderLookupLoading) return;
-        setRejectReason('');
-        setRejectModalOpen(true);
-    };
-
-    const closeRejectModal = () => {
-        if (rejectingOrder) return;
-        setRejectModalOpen(false);
-        setRejectReason('');
-    };
-
-    const handleRejectOrder = async () => {
+    const openCancelModal = async () => {
+        if (cancellingOrder || confirmingOrder || orderLookupLoading) return;
         const customOrderId = request?.customOrderId || request?.orderId || request?.customOrder?.orderId;
-        const reason = rejectReason.trim();
+        setCancelReason('');
+        setCancelModalOpen(true);
+        setCancelRefundEstimate(null);
 
-        if (!customOrderId || rejectingOrder) return;
+        if (!customOrderId) return;
+
+        setCancelEstimateLoading(true);
+        const estimateRes = await getCustomOrderRefundEstimate(customOrderId);
+        setCancelEstimateLoading(false);
+
+        if (estimateRes.success) {
+            setCancelRefundEstimate(estimateRes.data || null);
+        }
+    };
+
+    const closeCancelModal = () => {
+        if (cancellingOrder) return;
+        setCancelModalOpen(false);
+        setCancelReason('');
+        setCancelRefundEstimate(null);
+        setCancelEstimateLoading(false);
+    };
+
+    const handleCancelOrder = async () => {
+        const customOrderId = request?.customOrderId || request?.orderId || request?.customOrder?.orderId;
+        const reason = cancelReason.trim();
+
+        if (!customOrderId || cancellingOrder) return;
         if (!reason) {
-            appToast.warning('Vui lòng nhập lý do từ chối');
+            appToast.warning('Vui lòng nhập lý do huỷ đơn');
             return;
         }
 
-        setRejectingOrder(true);
-        const res = await rejectCustomOrder(customOrderId, reason);
-        setRejectingOrder(false);
+        setCancellingOrder(true);
+        const cancelRes = await cancelCustomOrder(customOrderId, reason);
+        setCancellingOrder(false);
 
-        if (!res.success) {
-            appToast.error('Không thể từ chối đơn', res.error || 'Vui lòng thử lại');
+        if (!cancelRes.success) {
+            appToast.error('Không thể huỷ đơn', cancelRes.error || 'Vui lòng thử lại');
             return;
         }
 
-        appToast.success('Đã từ chối đơn hàng');
-        setRejectModalOpen(false);
-        setRejectReason('');
+        appToast.success('Đã huỷ đơn hàng');
+        setCancelModalOpen(false);
+        setCancelReason('');
         await refreshDetail();
         await loadOrderStages(request?.requestId || id);
     };
@@ -507,7 +543,7 @@ const CustomRequestDetailPage = () => {
                                 </button>
                             )}
                             {(requestStatus === 'PENDING_CONFIRMATION' || requestStatus === 'PENDING_PAYMENT' || requestStatus === 'IN_PROGRESS') && customOrderId && (
-                                <button type="button" className="btn btn-outline" onClick={openRejectModal} disabled={rejectingOrder || confirmingOrder || orderLookupLoading}>
+                                <button type="button" className="btn btn-outline" onClick={openCancelModal} disabled={cancellingOrder || confirmingOrder || orderLookupLoading}>
                                     <FiFileText /> Hủy đơn hàng
                                 </button>
                             )}
@@ -591,11 +627,11 @@ const CustomRequestDetailPage = () => {
                                                 Đơn hàng này đang ở trạng thái chờ xác nhận. Sau khi bạn xác nhận, hệ thống sẽ mở khóa các giai đoạn thanh toán.
                                             </p>
                                             <div className="detail-locked-payment-actions">
-                                                <button type="button" className="btn btn-primary" onClick={handleConfirmOrder} disabled={confirmingOrder || rejectingOrder || orderLookupLoading}>
+                                                <button type="button" className="btn btn-primary" onClick={handleConfirmOrder} disabled={confirmingOrder || cancellingOrder || orderLookupLoading}>
                                                     {confirmingOrder ? 'Đang xác nhận...' : orderLookupLoading ? 'Đang tải đơn...' : 'Xác nhận để mở thanh toán'}
                                                 </button>
-                                                <button type="button" className="btn btn-outline" onClick={openRejectModal} disabled={rejectingOrder || confirmingOrder || orderLookupLoading}>
-                                                    Từ chối
+                                                <button type="button" className="btn btn-outline" onClick={openCancelModal} disabled={cancellingOrder || confirmingOrder || orderLookupLoading}>
+                                                    Hủy đơn
                                                 </button>
                                                 <span className="detail-locked-payment-hint">Sau khi xác nhận, bạn có thể thanh toán giai đoạn đầu tiên.</span>
                                             </div>
@@ -723,47 +759,118 @@ const CustomRequestDetailPage = () => {
                 </div>
             )}
 
-            {rejectModalOpen && (
-                <div className="detail-confirm-overlay" onClick={closeRejectModal} role="dialog" aria-modal="true" aria-labelledby="detail-reject-title">
+            {cancelModalOpen && (
+                <div className="detail-confirm-overlay detail-cancel-overlay" onClick={closeCancelModal} role="dialog" aria-modal="true" aria-labelledby="detail-cancel-title">
                     <div className="detail-confirm-modal detail-cancel-modal" onClick={(e) => e.stopPropagation()}>
                         <div className="detail-cancel-header">
-                            <div className="detail-cancel-title" id="detail-reject-title">Từ chối đơn hàng</div>
-                            <button type="button" className="detail-cancel-close" onClick={closeRejectModal} aria-label="Đóng modal">×</button>
+                            <div>
+                                <div className="detail-cancel-title" id="detail-cancel-title">Huỷ đơn hàng</div>
+                                <div className="detail-cancel-subtitle">Xem ước tính hoàn tiền trước khi xác nhận</div>
+                            </div>
+                            <button type="button" className="detail-cancel-close" onClick={closeCancelModal} aria-label="Đóng modal">×</button>
                         </div>
 
                         <div className="detail-cancel-body">
                             <div className="detail-cancel-info-box">
-                                <span className="detail-cancel-info-icon">ℹ️</span>
+                                <span className="detail-cancel-info-icon">i</span>
                                 <div className="detail-cancel-info-text">
-                                    Vui lòng nhập lý do từ chối để khách hàng biết rõ nguyên nhân.
+                                    Hệ thống sẽ tính số tiền hoàn lại dựa trên tiến độ hiện tại. Vui lòng kiểm tra kỹ trước khi xác nhận huỷ đơn.
                                 </div>
                             </div>
 
+                            <div className="detail-refund-summary-card">
+                                <div className="detail-refund-summary-head">TỔNG KẾT HOÀN TIỀN</div>
+                                <div className="detail-refund-summary-row">
+                                    <span>Tổng hoàn tiền gộp</span>
+                                    <strong className="detail-positive-value">
+                                        {cancelEstimateLoading ? '...' : formatCurrency(cancelRefundEstimate?.grossRefundAmount ?? 0)}
+                                    </strong>
+                                </div>
+                                <div className="detail-refund-summary-row">
+                                    <span>Hoa hồng nền tảng</span>
+                                    <strong className="detail-negative-value">
+                                        {cancelEstimateLoading ? '...' : `- ${formatCurrency(cancelRefundEstimate?.platformCommission ?? 0)}`}
+                                    </strong>
+                                </div>
+                                <div className="detail-divider" />
+                                <div className="detail-refund-summary-row">
+                                    <span>Số tiền hoàn thực tế</span>
+                                    <strong className="detail-positive-value">
+                                        {cancelEstimateLoading ? '...' : formatCurrency(cancelRefundEstimate?.netRefundAmount ?? 0)}
+                                    </strong>
+                                </div>
+                                <div className="detail-refund-summary-row">
+                                    <span>Khả năng huỷ</span>
+                                    <strong className={cancelRefundEstimate?.canCancel ? 'detail-positive-value' : 'detail-negative-value'}>
+                                        {cancelEstimateLoading ? '...' : (cancelRefundEstimate?.canCancel ? 'Có thể huỷ' : 'Không thể huỷ')}
+                                    </strong>
+                                </div>
+                                {/* <div className="detail-refund-summary-row">
+                                    <span>Artisan đủ số dư</span>
+                                    <strong className={cancelRefundEstimate?.artisanHasSufficientBalance ? 'detail-positive-value' : 'detail-negative-value'}>
+                                        {cancelEstimateLoading ? '...' : (cancelRefundEstimate?.artisanHasSufficientBalance ? 'Có' : 'Không')}
+                                    </strong>
+                                </div> */}
+                            </div>
+
+                            <div className="detail-refund-breakdown">
+                                <div className="detail-cancel-section-label">CHI TIẾT TỪNG GIAI ĐOẠN</div>
+                                {cancelEstimateLoading ? (
+                                    <div className="detail-refund-skeleton">
+                                        <div />
+                                        <div />
+                                        <div />
+                                    </div>
+                                ) : Array.isArray(cancelRefundEstimate?.stageBreakdown) && cancelRefundEstimate.stageBreakdown.length > 0 ? (
+                                    <div className="detail-cancel-breakdown-list">
+                                        {cancelRefundEstimate.stageBreakdown.map((item, index) => {
+                                            const fullRefund = Number(item?.grossRefund ?? 0);
+                                            const netRefund = Number(item?.netRefund ?? 0);
+                                            const platformCommission = Number(item?.platformCommission ?? 0);
+                                            const refundPercentage = item?.refundPercentage != null ? `${item.refundPercentage}%` : '—';
+                                            return (
+                                                <div key={`${item?.stageId || item?.stageName || index}`} className="detail-cancel-breakdown-item">
+                                                    <div className="detail-cancel-breakdown-head">
+                                                        <strong>{item?.stageName || `Giai đoạn ${index + 1}`}</strong>
+                                                        <span>{refundPercentage}</span>
+                                                    </div>
+                                                    <div className="detail-cancel-breakdown-sub">
+                                                        {translateRefundReason(item?.refundReason)}
+                                                    </div>
+                                                    <div className="detail-cancel-breakdown-meta">
+                                                        <span>Đã thanh toán: {formatCurrency(item?.paidAmount ?? 0)}</span>
+                                                        <span>Gộp: {formatCurrency(fullRefund)}</span>
+                                                        <span>Hoa hồng: - {formatCurrency(platformCommission)}</span>
+                                                        <span>Thực nhận: {formatCurrency(netRefund)}</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="detail-refund-empty">Chưa có dữ liệu chi tiết tiến độ.</div>
+                                )}
+                            </div>
+
                             <div>
-                                <label className="detail-cancel-label" htmlFor="reject-reason-input">Lý do từ chối</label>
+                                <label className="detail-cancel-label" htmlFor="cancel-reason-input">Lý do huỷ đơn</label>
                                 <textarea
-                                    id="reject-reason-input"
+                                    id="cancel-reason-input"
                                     className="detail-cancel-textarea"
-                                    value={rejectReason}
-                                    onChange={(e) => setRejectReason(e.target.value)}
-                                    placeholder="Nhập lý do từ chối..."
-                                    disabled={rejectingOrder}
+                                    value={cancelReason}
+                                    onChange={(e) => setCancelReason(e.target.value)}
+                                    placeholder="Nhập lý do huỷ đơn..."
+                                    disabled={cancellingOrder}
                                 />
                             </div>
                         </div>
 
                         <div className="detail-cancel-footer">
-                            <button type="button" className="btn btn-outline" onClick={closeRejectModal} disabled={rejectingOrder} style={{ flex: 1 }}>
+                            <button type="button" className="btn btn-outline" onClick={closeCancelModal} disabled={cancellingOrder} style={{ flex: 1 }}>
                                 Hủy
                             </button>
-                            <button
-                                type="button"
-                                className="btn btn-primary"
-                                onClick={handleRejectOrder}
-                                disabled={rejectingOrder}
-                                style={{ flex: 1 }}
-                            >
-                                {rejectingOrder ? 'Đang từ chối...' : 'Xác nhận từ chối'}
+                            <button type="button" className="btn btn-primary" onClick={handleCancelOrder} disabled={cancellingOrder} style={{ flex: 1 }}>
+                                {cancellingOrder ? 'Đang huỷ...' : 'Xác nhận huỷ đơn'}
                             </button>
                         </div>
                     </div>

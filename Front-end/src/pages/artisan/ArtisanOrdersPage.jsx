@@ -1,16 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FiCalendar, FiCheckCircle, FiClock, FiPackage, FiUser, FiXCircle } from 'react-icons/fi';
+import { FiCalendar, FiCheckCircle, FiChevronLeft, FiChevronRight, FiClock, FiPackage, FiUser, FiXCircle } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { appToast } from '../../lib/appToast';
 import { cancelCustomOrder, getArtisanCustomOrders } from '../../services/customRequestService';
 import './ArtisanOrdersPage.css';
+
+const PAGE_SIZE = 9;
 
 const tabs = [
     { key: 'ALL', label: 'Tất cả' },
     { key: 'IN_PROGRESS', label: 'Đang thực hiện' },
     { key: 'COMPLETED', label: 'Hoàn thành' },
     { key: 'CANCELLED', label: 'Đã huỷ' },
+];
+
+const sortOptions = [
+    { key: 'NEWEST', label: 'Mới nhất' },
+    { key: 'OLDEST', label: 'Cũ nhất' },
 ];
 
 const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`;
@@ -50,32 +57,47 @@ const ArtisanOrdersPage = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState([]);
+    const [page, setPage] = useState(0);
+    const [pageInfo, setPageInfo] = useState({ totalPages: 0, totalElements: 0, number: 0 });
     const [activeTab, setActiveTab] = useState('ALL');
+    const [sortOrder, setSortOrder] = useState('NEWEST');
     const [cancellingId, setCancellingId] = useState('');
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
     const [targetCancelOrderId, setTargetCancelOrderId] = useState('');
     const [cancelConfirmText, setCancelConfirmText] = useState('');
 
-    const fetchOrders = async () => {
+    const pageCount = Number(pageInfo.totalPages || 0);
+    const currentPage = Number(pageInfo.number || page);
+    const hasNextPage = currentPage < pageCount - 1;
+    const hasPreviousPage = currentPage > 0;
+
+    const fetchOrders = useCallback(async (nextPage = page) => {
         setLoading(true);
-        const res = await getArtisanCustomOrders();
+        const res = await getArtisanCustomOrders({ page: nextPage, size: PAGE_SIZE });
         setLoading(false);
 
         if (!res.success) {
             setOrders([]);
+            setPageInfo({ totalPages: 0, totalElements: 0, number: nextPage });
             appToast.error('Không tải được đơn tùy chỉnh', res.error || 'Vui lòng thử lại');
             return;
         }
 
-        setOrders(Array.isArray(res.data) ? res.data : []);
-    };
+        const data = res.data || {};
+        setOrders(Array.isArray(data.content) ? data.content : []);
+        setPageInfo({
+            totalPages: Number(data.totalPages || 0),
+            totalElements: Number(data.totalElements || 0),
+            number: Number(data.number || nextPage),
+        });
+    }, [page]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            fetchOrders();
+            fetchOrders(page);
         }, 0);
         return () => clearTimeout(timer);
-    }, []);
+    }, [fetchOrders, page]);
 
     useEffect(() => {
         if (!cancelModalOpen) return undefined;
@@ -93,17 +115,34 @@ const ArtisanOrdersPage = () => {
         return orders.filter((order) => String(order?.status || '').toUpperCase() === activeTab);
     }, [activeTab, orders]);
 
+    const sortedFiltered = useMemo(() => {
+        const toTime = (value) => {
+            const time = new Date(value || 0).getTime();
+            return Number.isNaN(time) ? 0 : time;
+        };
+
+        return [...filtered].sort((a, b) => {
+            const aTime = toTime(a?.createdAt);
+            const bTime = toTime(b?.createdAt);
+            return sortOrder === 'NEWEST' ? bTime - aTime : aTime - bTime;
+        });
+    }, [filtered, sortOrder]);
+
     const summary = useMemo(() => {
         const inProgress = orders.filter((order) => String(order?.status || '').toUpperCase() === 'IN_PROGRESS').length;
         const completed = orders.filter((order) => String(order?.status || '').toUpperCase() === 'COMPLETED').length;
         const cancelled = orders.filter((order) => String(order?.status || '').toUpperCase() === 'CANCELLED').length;
+        const from = currentPage * PAGE_SIZE + 1;
+        const to = Math.min((currentPage + 1) * PAGE_SIZE, pageInfo.totalElements || 0);
+        const paginationText = pageInfo.totalElements ? `Hiển thị ${from}–${to} trong tổng ${pageInfo.totalElements} đơn` : 'Hiển thị 0 đơn';
         return {
-            total: orders.length,
+            total: pageInfo.totalElements || orders.length,
             inProgress,
             completed,
             cancelled,
+            paginationText,
         };
-    }, [orders]);
+    }, [currentPage, orders, pageInfo]);
 
     const openCancelModal = (orderId) => {
         if (!orderId) return;
@@ -186,13 +225,26 @@ const ArtisanOrdersPage = () => {
                 ))}
             </div>
 
+            <div className="tabs sort-tabs" role="tablist" aria-label="Sắp xếp đơn hàng">
+                {sortOptions.map((option) => (
+                    <button
+                        key={option.key}
+                        type="button"
+                        className={`tab-btn ${sortOrder === option.key ? 'active' : ''}`}
+                        onClick={() => setSortOrder(option.key)}
+                    >
+                        {option.label}
+                    </button>
+                ))}
+            </div>
+
             {loading ? (
                 <div className="list-grid">{[1, 2, 3].map((item) => <div key={item} className="artisan-skeleton-card" />)}</div>
-            ) : filtered.length === 0 ? (
+            ) : sortedFiltered.length === 0 ? (
                 <div className="artisan-empty">Không có đơn nào ở trạng thái này.</div>
             ) : (
                 <div className="list-grid">
-                    {filtered.map((order) => {
+                    {sortedFiltered.map((order) => {
                         const id = order?.customOrderId ?? order?.orderId ?? order?.id;
                         const stages = Array.isArray(order?.stages) ? order.stages : [];
                         const progress = getProgress(order);
@@ -264,6 +316,33 @@ const ArtisanOrdersPage = () => {
                 </div>
             )}
 
+            {!loading && filtered.length > 0 && pageCount > 1 && (
+                <div className="pagination-toolbar pagination-toolbar-bottom">
+                    <div className="pagination-info">
+                        <strong>{summary.paginationText}</strong>
+                        <span>Trang {pageCount ? currentPage + 1 : 0} / {pageCount || 0}</span>
+                    </div>
+                    <div className="pagination-actions">
+                        <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
+                            disabled={!hasPreviousPage || loading}
+                        >
+                            <FiChevronLeft /> Trước
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            onClick={() => setPage((prev) => Math.min(prev + 1, Math.max(pageCount - 1, 0)))}
+                            disabled={!hasNextPage || loading}
+                        >
+                            Sau <FiChevronRight />
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {cancelModalOpen && createPortal(
                 <div className="cancel-modal-overlay" onClick={() => setCancelModalOpen(false)} aria-hidden="true">
                     <div className="cancel-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
@@ -298,6 +377,7 @@ const ArtisanOrdersPage = () => {
                 </div>,
                 document.body
             )}
+
         </div>
     );
 };

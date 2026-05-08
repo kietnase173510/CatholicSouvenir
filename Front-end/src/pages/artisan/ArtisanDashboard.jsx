@@ -7,6 +7,7 @@ import PortfolioView from './components/PortfolioView';
 import TemplatesView from './components/TemplatesView';
 import ArtisanRequestsPage from './ArtisanRequestsPage';
 import ArtisanOrdersPage from './ArtisanOrdersPage';
+import ArtisanTemplateOrdersPage from './ArtisanTemplateOrdersPage';
 import ArtisanReadyOrdersPage from './ArtisanReadyOrdersPage';
 import ComplaintManagementPage from './ComplaintManagementPage';
 import ArtisanQuoteCreatePage from './ArtisanQuoteCreatePage';
@@ -23,6 +24,7 @@ const getViewFromPath = (pathname) => {
     if (pathname === '/artisan/requests') return 'requests';
     if (/^\/artisan\/requests\/[^/]+\/custom-order$/.test(pathname)) return 'customOrderCreate';
     if (pathname === '/artisan/orders') return 'customOrders';
+    if (pathname === '/artisan/template-orders') return 'templateOrders';
     if (pathname === '/artisan/ready-orders') return 'readyOrders';
     if (pathname === '/artisan/complaints') return 'complaints';
     if (pathname === '/artisan/wallet') return 'wallet';
@@ -37,6 +39,7 @@ const viewToPath = (view) => {
     if (view === 'portfolio') return '/artisan/portfolio';
     if (view === 'requests') return '/artisan/requests';
     if (view === 'customOrders') return '/artisan/orders';
+    if (view === 'templateOrders') return '/artisan/template-orders';
     if (view === 'readyOrders') return '/artisan/ready-orders';
     if (view === 'complaints') return '/artisan/complaints';
     if (view === 'wallet') return '/artisan/wallet';
@@ -97,6 +100,7 @@ const ArtisanDashboard = () => {
                         {activeView === 'requests' && <ArtisanRequestsPage embedded />}
                         {activeView === 'customOrderCreate' && <ArtisanQuoteCreatePage embedded />}
                         {activeView === 'customOrders' && <ArtisanOrdersPage embedded />}
+                        {activeView === 'templateOrders' && <ArtisanTemplateOrdersPage embedded />}
                         {activeView === 'readyOrders' && <ArtisanReadyOrdersPage embedded />}
                         {activeView === 'complaints' && <ComplaintManagementPage />}
                         {activeView === 'shipments' && <ShipmentManagementPage user={user} embedded />}

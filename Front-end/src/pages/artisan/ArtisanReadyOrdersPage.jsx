@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FiCalendar, FiEye, FiPackage, FiUser, FiX } from 'react-icons/fi';
+import { FiCalendar, FiChevronLeft, FiChevronRight, FiEye, FiPackage, FiUser, FiX } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { appToast } from '../../lib/appToast';
 import { getOrderDetail, getOrdersByArtisan } from '../../services/orderService';
 import './ArtisanOrdersPage.css';
+
+const PAGE_SIZE = 9;
 
 const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`;
 
@@ -42,12 +44,30 @@ const getStatusClass = (status) => {
     return 'pending';
 };
 
+const statusOptions = [
+    { value: '', label: 'Tất cả trạng thái' },
+    { value: 'PAID', label: 'Đã thanh toán' },
+    { value: 'SHIPPING', label: 'Đang giao' },
+    { value: 'DELIVERED', label: 'Đã giao' },
+    { value: 'CANCELLED', label: 'Đã huỷ' },
+];
+
+const sortOptions = [
+    { value: 'DESC', label: 'Mới nhất' },
+    { value: 'ASC', label: 'Cũ nhất' },
+];
+
 const ArtisanReadyOrdersPage = () => {
     const { user } = useAuth();
     const artisanId = user?.accountId || user?.id || user?.userId || '';
 
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState([]);
+    const [page, setPage] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [totalElements, setTotalElements] = useState(0);
+    const [statusFilter, setStatusFilter] = useState('');
+    const [sortDirection, setSortDirection] = useState('DESC');
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState('');
     const [selectedOrder, setSelectedOrder] = useState(null);
@@ -60,30 +80,68 @@ const ArtisanReadyOrdersPage = () => {
             if (!artisanId) {
                 setLoading(false);
                 setOrders([]);
+                setPage(0);
+                setTotalPages(0);
+                setTotalElements(0);
                 return;
             }
 
             setLoading(true);
-            const res = await getOrdersByArtisan(artisanId, { page: 0, size: 10, sortBy: 'createAt', sortDirection: 'DESC' });
+            const res = await getOrdersByArtisan(artisanId, { page, size: PAGE_SIZE, sortBy: 'createAt', sortDirection });
             if (ignore) return;
             setLoading(false);
 
             if (!res.success) {
                 setOrders([]);
+                setTotalPages(0);
+                setTotalElements(0);
                 appToast.error('Không tải được đơn hàng sẵn', res.error || 'Vui lòng thử lại');
                 return;
             }
 
-            setOrders(Array.isArray(res.data?.content) ? res.data.content : []);
+            const nextOrders = Array.isArray(res.data?.content) ? res.data.content : [];
+            const filteredOrders = statusFilter ? nextOrders.filter((order) => String(order?.status || '').toUpperCase() === statusFilter) : nextOrders;
+            setOrders(filteredOrders);
+            setTotalPages(Number(res.data?.totalPages ?? 0));
+            setTotalElements(Number(res.data?.totalElements ?? filteredOrders.length ?? 0));
+            setPage(Number(res.data?.pageNumber ?? page));
         };
 
         load();
         return () => {
             ignore = true;
         };
-    }, [artisanId]);
+    }, [artisanId, page, sortDirection, statusFilter]);
 
-    const summary = useMemo(() => ({ total: orders.length }), [orders]);
+    const summary = useMemo(() => ({ total: totalElements }), [totalElements]);
+    const paginationStart = totalElements === 0 ? 0 : page * PAGE_SIZE + 1;
+    const paginationEnd = totalElements === 0 ? 0 : page * PAGE_SIZE + orders.length;
+    const canGoPrevious = page > 0;
+    const canGoNext = totalPages > 0 ? page < totalPages - 1 : orders.length === PAGE_SIZE;
+
+    const handleStatusFilterChange = (event) => {
+        setStatusFilter(event.target.value);
+        setPage(0);
+    };
+
+    const handleSortDirectionChange = (event) => {
+        setSortDirection(event.target.value);
+        setPage(0);
+    };
+
+    const goPrevious = () => {
+        if (canGoPrevious) setPage((current) => Math.max(0, current - 1));
+    };
+
+    const goNext = () => {
+        if (canGoNext) setPage((current) => current + 1);
+    };
+
+    const jumpToPage = (targetPage) => {
+        if (targetPage >= 0 && (totalPages === 0 || targetPage < totalPages)) {
+            setPage(targetPage);
+        }
+    };
 
     const closeDetailModal = () => {
         setDetailModalOpen(false);
@@ -133,48 +191,104 @@ const ArtisanReadyOrdersPage = () => {
                 </article>
             </section>
 
+            <section className="pagination-toolbar artisan-filter-toolbar">
+                <div className="pagination-info">
+                    <strong>Bộ lọc đơn hàng</strong>
+                    <span>Lọc theo trạng thái hoặc sắp xếp theo thời gian tạo</span>
+                </div>
+                <div className="pagination-actions artisan-filter-actions">
+                    <select className="artisan-filter-select" value={statusFilter} onChange={handleStatusFilterChange} aria-label="Lọc trạng thái đơn hàng">
+                        {statusOptions.map((option) => (
+                            <option key={option.value || 'all'} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                    <select className="artisan-filter-select" value={sortDirection} onChange={handleSortDirectionChange} aria-label="Sắp xếp đơn hàng">
+                        {sortOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            </section>
+
             {loading ? (
                 <div className="list-grid">{[1, 2, 3].map((item) => <div key={item} className="artisan-skeleton-card" />)}</div>
             ) : orders.length === 0 ? (
                 <div className="artisan-empty">Chưa có đơn hàng sẵn nào.</div>
             ) : (
-                <div className="list-grid">
-                    {orders.map((order) => {
-                        const id = order?.orderId || order?.id;
-                        const details = Array.isArray(order?.orderDetails) ? order.orderDetails : [];
-                        const firstItem = details[0];
+                <>
+                    <div className="list-grid">
+                        {orders.map((order) => {
+                            const id = order?.orderId || order?.id;
+                            const details = Array.isArray(order?.orderDetails) ? order.orderDetails : [];
+                            const firstItem = details[0];
 
-                        return (
-                            <article key={String(id)} className="order-card unified-card">
-                                <header className="card-header-block">
-                                    <div className="card-title-row">
-                                        <h3 title={firstItem?.productName || 'Đơn hàng sẵn'}>{firstItem?.productName || 'Đơn hàng sẵn'}</h3>
-                                        <span className={`status-badge ${getStatusClass(order?.status)}`}>{getStatusText(order?.status)}</span>
-                                    </div>
-                                    <div className="card-meta-row">
-                                        <span><FiCalendar /> {formatDate(order?.orderDate || order?.createAt)}</span>
-                                        <span><FiUser /> {order?.fullName || 'Khách hàng'}</span>
-                                        <strong>{formatCurrency(order?.total)}</strong>
-                                    </div>
-                                </header>
+                            return (
+                                <article key={String(id)} className="order-card unified-card">
+                                    <header className="card-header-block">
+                                        <div className="card-title-row">
+                                            <h3 title={firstItem?.productName || 'Đơn hàng sẵn'}>{firstItem?.productName || 'Đơn hàng sẵn'}</h3>
+                                            <span className={`status-badge ${getStatusClass(order?.status)}`}>{getStatusText(order?.status)}</span>
+                                        </div>
+                                        <div className="card-meta-row">
+                                            <span><FiCalendar /> {formatDate(order?.orderDate || order?.createAt)}</span>
+                                            <span><FiUser /> {order?.fullName || 'Khách hàng'}</span>
+                                            <strong>{formatCurrency(order?.total)}</strong>
+                                        </div>
+                                    </header>
 
-                                <div className="card-body-block">
-                                    <p className="card-description">Mã đơn: {id}</p>
-                                    <p className="card-description">Sản phẩm: {firstItem?.productName || '—'}</p>
-                                    <div className="card-compact-stat">{details.length} sản phẩm • {order?.paymentMethod || '—'}</div>
-                                    <button
-                                        type="button"
-                                        className="btn btn-outline btn-sm"
-                                        onClick={() => handleViewDetail(id)}
-                                        disabled={detailLoading}
-                                    >
-                                        <FiEye /> Xem chi tiết
-                                    </button>
-                                </div>
-                            </article>
-                        );
-                    })}
-                </div>
+                                    <div className="card-body-block">
+                                        <p className="card-description">Mã đơn: {id}</p>
+                                        <p className="card-description">Sản phẩm: {firstItem?.productName || '—'}</p>
+                                        <div className="card-compact-stat">{details.length} sản phẩm • {order?.paymentMethod || '—'}</div>
+                                        <button
+                                            type="button"
+                                            className="btn btn-outline btn-sm"
+                                            onClick={() => handleViewDetail(id)}
+                                            disabled={detailLoading}
+                                        >
+                                            <FiEye /> Xem chi tiết
+                                        </button>
+                                    </div>
+                                </article>
+                            );
+                        })}
+                    </div>
+
+                    <div className="pagination-toolbar pagination-toolbar-bottom artisan-pagination-toolbar">
+                        <div className="pagination-info">
+                            <strong>
+                                Hiển thị {paginationStart}-{paginationEnd} trên {summary.total} đơn hàng
+                            </strong>
+                            <span>9 đơn mỗi trang • Trang {totalElements === 0 ? 0 : page + 1}{totalPages > 0 ? ` / ${totalPages}` : ''}</span>
+                        </div>
+                        <div className="pagination-actions artisan-pagination-actions">
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => jumpToPage(0)} disabled={!canGoPrevious}>
+                                Trang đầu
+                            </button>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={goPrevious} disabled={!canGoPrevious}>
+                                <FiChevronLeft /> Trước
+                            </button>
+                            <button type="button" className="btn btn-primary btn-sm" disabled>
+                                {page + 1}
+                            </button>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={goNext} disabled={!canGoNext}>
+                                Sau <FiChevronRight />
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                onClick={() => jumpToPage(Math.max(totalPages - 1, 0))}
+                                disabled={!canGoNext}
+                            >
+                                Trang cuối
+                            </button>
+                        </div>
+                    </div>
+                </>
             )}
 
             {detailModalOpen && (

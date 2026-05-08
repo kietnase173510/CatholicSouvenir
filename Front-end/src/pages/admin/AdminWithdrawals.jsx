@@ -320,6 +320,10 @@ const AdminWithdrawals = () => {
                 <span className="detail-value">{selectedWithdrawal.processedByName || '—'}</span>
               </div>
               <div className="detail-row">
+                <span className="detail-label">Lý do rút tiền</span>
+                <span className="detail-value">{selectedWithdrawal.reason || '—'}</span>
+              </div>
+              <div className="detail-row">
                 <span className="detail-label">Lý do từ chối</span>
                 <span className="detail-value">{selectedWithdrawal.rejectionReason || '—'}</span>
               </div>

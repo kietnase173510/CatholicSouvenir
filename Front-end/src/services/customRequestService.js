@@ -27,6 +27,23 @@ const mapError = (error, fallback) => {
     return typeof message === 'string' ? message : fallback;
 };
 
+export const getUserProfileById = async (accountId) => {
+    if (!accountId) return { success: false, error: 'Thiếu accountId.' };
+
+    try {
+        const response = await api.get(`/profile/${accountId}`);
+        const normalized = normalizeResponse(response);
+
+        if (!isSuccessCode(normalized.code)) {
+            return { success: false, error: normalized.message || 'Không tải được thông tin khách hàng.' };
+        }
+
+        return { success: true, data: normalized.data ?? null };
+    } catch (error) {
+        return { success: false, error: mapError(error, 'Không tải được thông tin khách hàng. Vui lòng thử lại.') };
+    }
+};
+
 const toArray = (payload) => {
     if (Array.isArray(payload)) return payload;
     if (Array.isArray(payload?.content)) return payload.content;
@@ -425,18 +442,39 @@ export const getCustomerCustomOrders = async ({ status = '', page = 0, size = 10
     }
 };
 
-export const getArtisanCustomOrders = async () => {
+export const getArtisanCustomOrders = async ({ page = 0, size = 10 } = {}) => {
     try {
-        const response = await api.get('/custom-orders');
+        const response = await api.get('/custom-orders', { params: { page, size } });
         const normalized = normalizeResponse(response);
 
         if (!isSuccessCode(normalized.code)) {
-            return { success: false, error: normalized.message || 'Không tải được đơn tùy chỉnh.', data: [] };
+            return {
+                success: false,
+                error: normalized.message || 'Không tải được đơn tùy chỉnh.',
+                data: { content: [], totalPages: 0, totalElements: 0, number: page, size },
+            };
         }
 
-        return { success: true, data: toArray(normalized.data) };
+        const raw = normalized.data ?? {};
+        const content = toArray(raw);
+
+        return {
+            success: true,
+            data: {
+                ...raw,
+                content,
+                totalPages: Number(raw?.totalPages ?? 0),
+                totalElements: Number(raw?.totalElements ?? content.length),
+                number: Number(raw?.number ?? page),
+                size: Number(raw?.size ?? size),
+            },
+        };
     } catch (error) {
-        return { success: false, error: mapError(error, 'Không tải được đơn tùy chỉnh.'), data: [] };
+        return {
+            success: false,
+            error: mapError(error, 'Không tải được đơn tùy chỉnh.'),
+            data: { content: [], totalPages: 0, totalElements: 0, number: page, size },
+        };
     }
 };
 
@@ -527,26 +565,26 @@ export const getCustomOrderRefundEstimate = async (orderId) => {
     }
 };
 
-export const rejectCustomOrder = async (orderId, reason = '') => {
+export const cancelCustomOrder = async (orderId, reason = '') => {
     if (!orderId) return { success: false, error: 'Thiếu mã đơn.' };
 
     try {
-        const response = await api.post(`/custom-orders/${orderId}/reject`, {
+        const response = await api.post(`/custom-orders/${orderId}/cancel`, {
             reason: String(reason || '').trim(),
         });
         const normalized = normalizeResponse(response);
 
         if (!isSuccessCode(normalized.code)) {
-            return { success: false, error: normalized.message || 'Từ chối đơn thất bại.' };
+            return { success: false, error: normalized.message || 'Huỷ đơn thất bại.' };
         }
 
         return { success: true, data: normalized.data || {} };
     } catch (error) {
-        return { success: false, error: mapError(error, 'Từ chối đơn thất bại.') };
+        return { success: false, error: mapError(error, 'Huỷ đơn thất bại.') };
     }
 };
 
-export const cancelCustomOrder = rejectCustomOrder;
+export const rejectCustomOrder = cancelCustomOrder;
 
 export const uploadStageProof = async (stageId, payload = {}) => {
     if (!stageId) return { success: false, error: 'Thiếu mã stage.' };
@@ -594,6 +632,7 @@ export const completeStage = async (stageId, payload = {}) => {
 
 export default {
     getCustomerCustomRequests,
+    getUserProfileById,
     getCustomRequestDetail,
     createCustomRequestV2,
     publishCustomRequest,

@@ -55,6 +55,27 @@ export const getMyTemplates = async (params = {}) => {
     }
 };
 
+export const getArtisanTemplates = async ({ page = 0, size = 10 } = {}) => {
+    try {
+        const response = await api.get('/artisan/templates', { params: { page, size } });
+        const payload = normalizeResponse(response);
+        if (payload.code !== 200) {
+            return {
+                success: false,
+                error: payload.message || 'Không tải được danh sách template artisan.',
+                data: normalizePaged({ data: { content: [], totalElements: 0, totalPages: 0, number: page, size } }),
+            };
+        }
+        return { success: true, data: normalizePaged({ data: payload.data }) };
+    } catch (error) {
+        return {
+            success: false,
+            error: mapError(error, 'Không tải được danh sách template artisan.'),
+            data: normalizePaged({ data: { content: [], totalElements: 0, totalPages: 0, number: page, size } }),
+        };
+    }
+};
+
 export const getTemplateById = async (id) => {
     try {
         const response = await api.get(`/templates/${id}`);

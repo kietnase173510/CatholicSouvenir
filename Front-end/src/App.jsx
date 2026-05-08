@@ -124,6 +124,7 @@ function App() {
         <Route path="/artisan/requests/:id" element={<ArtisanOnlyRoute><ArtisanCustomRequestDetailPage /></ArtisanOnlyRoute>} />
         <Route path="/artisan/requests/:id/custom-order" element={<ArtisanOnlyRoute><ArtisanDashboard /></ArtisanOnlyRoute>} />
         <Route path="/artisan/orders" element={<ArtisanOnlyRoute><ArtisanDashboard /></ArtisanOnlyRoute>} />
+        <Route path="/artisan/template-orders" element={<ArtisanOnlyRoute><ArtisanDashboard /></ArtisanOnlyRoute>} />
         <Route path="/artisan/ready-orders" element={<ArtisanOnlyRoute><ArtisanDashboard /></ArtisanOnlyRoute>} />
         <Route path="/artisan/readyOrders" element={<ArtisanOnlyRoute><ArtisanDashboard /></ArtisanOnlyRoute>} />
         <Route path="/artisan/complaints" element={<ArtisanOnlyRoute><ArtisanDashboard /></ArtisanOnlyRoute>} />

@@ -9,6 +9,11 @@
 .tabs { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .tab-btn { border: 1px solid var(--color-border); background: #fff; border-radius: 999px; padding: 8px 14px; }
 .tab-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.pagination-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 14px; background: #fff; border: 1px solid var(--color-border-light); border-radius: 14px; }
+.pagination-toolbar-bottom { margin-top: 16px; margin-bottom: 0; }
+.pagination-info { display: flex; flex-direction: column; gap: 4px; color: var(--color-text-light); }
+.pagination-info strong { color: var(--color-text); }
+.pagination-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .list-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; width: 100%; }
 .unified-card { border: 1px solid var(--color-border-light); border-radius: 16px; background: #fff; padding: 16px; display: flex; flex-direction: column; height: 100%; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04); }
 .card-header-block { display: flex; flex-direction: column; gap: 8px; }
@@ -46,8 +51,13 @@
 .cancel-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55); display: grid; place-items: center; z-index: 80; padding: 18px; }
 .cancel-modal { width: min(100%, 460px); background: #fff; border-radius: 18px; padding: 20px; box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2); }
 .cancel-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.artisan-pagination-toolbar { margin-top: 18px; }
+.artisan-pagination-actions .btn { min-width: 102px; }
 @media (max-width: 768px) {
   .artisan-orders-header { flex-direction: column; }
+  .pagination-toolbar { flex-direction: column; align-items: stretch; }
+  .pagination-actions { width: 100%; }
+  .pagination-actions .btn { flex: 1; }
   .list-grid { grid-template-columns: 1fr; }
   .card-footer-block { flex-direction: column; align-items: stretch; }
   .actions { justify-content: stretch; }

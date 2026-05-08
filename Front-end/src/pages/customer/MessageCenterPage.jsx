@@ -5,7 +5,6 @@ import SockJS from 'sockjs-client';
 import { useAuth } from '../../context/AuthContext';
 import { appToast } from '../../lib/appToast';
 import {
-    getConversationDetail,
     getConversationsByRequest,
     getMessages,
     getMyConversations,
@@ -29,6 +28,12 @@ const truncate = (txt, n = 30) => {
     const t = String(txt || '').trim();
     if (!t) return 'Chưa có tin nhắn';
     return t.length > n ? `${t.slice(0, n)}...` : t;
+};
+
+const buildConversationName = (conversation) => {
+    const name = String(conversation?.counterpartName || 'Người dùng').trim();
+    const title = String(conversation?.requestTitle || conversation?.requestDescription || '').trim();
+    return title ? `${name} - ${title}` : name;
 };
 
 const initials = (name) => String(name || '?').split(' ').filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join('');
@@ -341,7 +346,7 @@ const MessageCenterPage = () => {
                                 <span className="avatar">{initials(c.counterpartName)}</span>
                                 <div className="meta">
                                     <div className="row-top">
-                                        <strong>{c.counterpartName}</strong>
+                                        <strong>{buildConversationName(c)}</strong>
                                         <span>{fmt(c.lastMessageTime)}</span>
                                     </div>
                                     <p>{truncate(c.lastMessage, 30)}</p>
@@ -360,7 +365,7 @@ const MessageCenterPage = () => {
                         <>
                             <header className="chat-header">
                                 <div>
-                                    <h3>{activeConversation.counterpartName}</h3>
+                                    <h3>{buildConversationName(activeConversation)}</h3>
                                     <span className={isConnected ? 'online' : 'offline'}>{isConnected ? '● Đang online' : '○ Offline'}</span>
                                 </div>
                                 <span className="pill">{activeConversation.requestTitle}</span>

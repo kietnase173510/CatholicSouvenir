@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../cofig/api';
 import { appToast } from '../../lib/appToast';
 import { getOrderById, getOrdersByArtisan } from '../../services/orderService';
+import { getCustomerCustomOrders, getCustomOrderDetail } from '../../services/customRequestService';
 import {
     cancelShipment,
     createShipment,
@@ -103,6 +104,7 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
 
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState([]);
+    const [customOrders, setCustomOrders] = useState([]);
     const [shipments, setShipments] = useState({});
     const [selectedOrderId, setSelectedOrderId] = useState('');
     const [creating, setCreating] = useState(false);
@@ -128,22 +130,42 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     const loadShipments = async () => {
         if (!artisanId) return;
         setLoading(true);
-        const ordersRes = await getOrdersByArtisan(artisanId);
+
+        const [ordersRes, customOrdersRes] = await Promise.all([
+            getOrdersByArtisan(artisanId),
+            getCustomerCustomOrders({ status: 'COMPLETED', page: 0, size: 10 }),
+        ]);
+
         if (!ordersRes.success) {
             appToast.error('Không tải được danh sách đơn', ordersRes.error || 'Vui lòng thử lại');
             setOrders([]);
-            setLoading(false);
-            return;
         }
 
-        const ordersList = Array.isArray(ordersRes.data?.content)
-            ? ordersRes.data.content
-            : Array.isArray(ordersRes.data)
-                ? ordersRes.data
-                : [];
+        if (!customOrdersRes.success) {
+            appToast.error('Không tải được danh sách đơn custom', customOrdersRes.error || 'Vui lòng thử lại');
+            setCustomOrders([]);
+        }
+
+        const ordersList = ordersRes.success
+            ? (Array.isArray(ordersRes.data?.content)
+                ? ordersRes.data.content
+                : Array.isArray(ordersRes.data)
+                    ? ordersRes.data
+                    : [])
+            : [];
+
+        const customOrdersList = customOrdersRes.success
+            ? (Array.isArray(customOrdersRes.data?.content)
+                ? customOrdersRes.data.content
+                : Array.isArray(customOrdersRes.data)
+                    ? customOrdersRes.data
+                    : [])
+            : [];
 
         const paidOrders = ordersList.filter((order) => String(order?.status || '').toUpperCase() === 'PAID');
+        const completedCustomOrders = customOrdersList.filter((order) => String(order?.status || '').toUpperCase() === 'COMPLETED');
         setOrders(paidOrders);
+        setCustomOrders(completedCustomOrders);
 
         const pairs = await Promise.all(paidOrders.map(async (order) => {
             const orderId = order?.orderId || order?.id;
@@ -154,7 +176,7 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
 
         const nextMap = Object.fromEntries(pairs.filter(([key]) => Boolean(key)));
         setShipments(nextMap);
-        setSelectedOrderId((current) => current || paidOrders[0]?.orderId || paidOrders[0]?.id || '');
+        setSelectedOrderId((current) => current || paidOrders[0]?.orderId || paidOrders[0]?.id || completedCustomOrders[0]?.customOrderId || completedCustomOrders[0]?.id || '');
         const accountIds = paidOrders.map((order) => getOrderAccountId(order) || String(order?.customerId || '').trim()).filter(Boolean);
         if (accountIds.length) {
             await loadProfilesByAccountIds(accountIds);
@@ -184,7 +206,12 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
 
     useEffect(() => { loadShipments(); }, [artisanId]);
 
-    const selectedOrder = useMemo(() => orders.find((order) => String(order?.orderId || order?.id) === String(selectedOrderId)) || null, [orders, selectedOrderId]);
+    const shipmentCandidates = useMemo(() => [
+        ...orders.map((order) => ({ ...order, shipmentSource: 'PAID' })),
+        ...customOrders.map((order) => ({ ...order, shipmentSource: 'CUSTOM', orderId: order?.customOrderId || order?.id })),
+    ], [orders, customOrders]);
+
+    const selectedOrder = useMemo(() => shipmentCandidates.find((order) => String(order?.orderId || order?.id || order?.customOrderId) === String(selectedOrderId)) || null, [shipmentCandidates, selectedOrderId]);
     const selectedShipment = selectedOrder ? shipments[selectedOrder.orderId || selectedOrder.id] : null;
     const selectedProfile = selectedOrder ? profileByAccountId[String(selectedOrder.customerId || selectedOrder.accountId || selectedOrder.customerAccountId || selectedOrder.buyerAccountId || '')] || null : null;
     const selectedProfileKey = String(selectedOrder?.customerId || selectedOrder?.accountId || selectedOrder?.customerAccountId || selectedOrder?.buyerAccountId || '').trim();
@@ -425,7 +452,7 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     };
 
     const handleOpenOrderDetail = async (order) => {
-        const orderId = order?.orderId || order?.id;
+        const orderId = order?.orderId || order?.id || order?.customOrderId;
         if (!orderId) return;
 
         setDetailModalOpen(true);
@@ -433,7 +460,8 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
         setDetailError('');
         setDetailOrder(null);
 
-        const res = await getOrderById(orderId);
+        const isCustomOrder = String(order?.shipmentSource || '').toUpperCase() === 'CUSTOM';
+        const res = isCustomOrder ? await getCustomOrderDetail(orderId) : await getOrderById(orderId);
         if (!res.success) {
             setDetailError(res.error || 'Không tải được thông tin đơn hàng.');
             setDetailLoading(false);
@@ -492,9 +520,9 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
             </header>
 
             <section className="shipment-summary-grid">
-                <article className="shipment-summary-card"><FiTruck /><div><span>Đơn chờ tạo</span><strong>{orders.filter((order) => !shipments[order.orderId || order.id]).length}</strong></div></article>
+                <article className="shipment-summary-card"><FiTruck /><div><span>Đơn chờ tạo</span><strong>{shipmentCandidates.filter((order) => !shipments[order.orderId || order.id]).length}</strong></div></article>
                 <article className="shipment-summary-card"><FiCheckCircle /><div><span>Đã có vận đơn</span><strong>{Object.values(shipments).filter(Boolean).length}</strong></div></article>
-                <article className="shipment-summary-card"><FiAlertCircle /><div><span>Cần kiểm tra</span><strong>{orders.length}</strong></div></article>
+                <article className="shipment-summary-card"><FiAlertCircle /><div><span>Cần kiểm tra</span><strong>{shipmentCandidates.length}</strong></div></article>
             </section>
 
             <section className="shipment-layout">
@@ -504,13 +532,14 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                     </div>
                     {loading ? (
                         <p className="shipment-empty">Đang tải...</p>
-                    ) : orders.length === 0 ? (
-                        <p className="shipment-empty">Hiện chưa có đơn PAID nào.</p>
+                    ) : shipmentCandidates.length === 0 ? (
+                        <p className="shipment-empty">Hiện chưa có đơn nào có thể tạo vận đơn.</p>
                     ) : (
                         <div className="shipment-list">
-                            {orders.map((order) => {
-                                const orderId = order?.orderId || order?.id;
+                            {shipmentCandidates.map((order) => {
+                                const orderId = order?.orderId || order?.id || order?.customOrderId;
                                 const shipment = shipments[orderId];
+                                const displayLabel = String(order?.shipmentSource || '').toUpperCase() === 'CUSTOM' ? 'Đơn custom hoàn thành' : 'Đơn thường';
                                 return (
                                     <button
                                         key={orderId}
@@ -522,7 +551,7 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                                             <strong>#{String(orderId).slice(0, 8)}</strong>
                                             <span>{shipment ? 'Đã tạo' : 'Chưa tạo'}</span>
                                         </div>
-                                        <p>{order?.fullName || order?.customerName || 'Khách hàng'} · {formatCurrency(order?.total || order?.totalPrice)}</p>
+                                        <p>{order?.fullName || order?.customerName || 'Khách hàng'} · {displayLabel}</p>
                                         <small>{formatDateTime(order?.createdAt || order?.createAt)}</small>
                                     </button>
                                 );

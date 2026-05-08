@@ -210,10 +210,7 @@ const ComplaintHistoryPage = () => {
                                             <span>Artisan</span>
                                             <strong>{selectedComplaint.artisanName || '—'}</strong>
                                         </div>
-                                        <div className="complaint-detail-block">
-                                            <span>Yêu cầu trả hàng</span>
-                                            <strong>{selectedComplaint.requireReturn ? 'Có' : 'Không'}</strong>
-                                        </div>
+                             
                                         <div className="complaint-detail-block">
                                             <span>Số tiền hoàn</span>
                                             <strong>{new Intl.NumberFormat('vi-VN').format(Number(selectedComplaint.refundAmount || 0))} đ</strong>
