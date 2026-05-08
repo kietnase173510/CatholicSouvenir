@@ -98,8 +98,8 @@ export const getShipmentWardOptions = async (districtId) => {
 export const createShipment = async (payload) => {
     try {
         const response = await api.post('/shipments', {
-            orderId: payload.orderId || undefined,
-            customOrderId: payload.customOrderId || undefined,
+            customOrderId: payload.customOrderId ?? null,
+            orderId: payload.orderId ?? null,
             recipientName: payload.recipientName || '',
             recipientPhone: payload.recipientPhone || '',
             deliveryAddress: payload.deliveryAddress || '',

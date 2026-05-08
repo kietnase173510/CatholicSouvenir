@@ -649,6 +649,23 @@ export const uploadStageProof = async (stageId, payload = {}) => {
     }
 };
 
+export const startStage = async (stageId) => {
+    if (!stageId) return { success: false, error: 'Thiếu mã stage.' };
+
+    try {
+        const response = await api.put(`/stages/${stageId}/start`);
+        const normalized = normalizeResponse(response);
+
+        if (!isSuccessCode(normalized.code)) {
+            return { success: false, error: normalized.message || 'Bắt đầu stage thất bại.' };
+        }
+
+        return { success: true, data: normalized.data || {} };
+    } catch (error) {
+        return { success: false, error: mapError(error, 'Bắt đầu stage thất bại.') };
+    }
+};
+
 export const completeStage = async (stageId, payload = {}) => {
     if (!stageId) return { success: false, error: 'Thiếu mã stage.' };
 

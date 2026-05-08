@@ -123,6 +123,7 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     const [detailOrder, setDetailOrder] = useState(null);
     const [detailError, setDetailError] = useState('');
     const [profileByAccountId, setProfileByAccountId] = useState({});
+    const [refreshing, setRefreshing] = useState(false);
     const cityOptions = provinces;
     const availableDistricts = districts;
     const availableWards = wards;
@@ -167,12 +168,20 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
         setOrders(paidOrders);
         setCustomOrders(completedCustomOrders);
 
-        const pairs = await Promise.all(paidOrders.map(async (order) => {
-            const orderId = order?.orderId || order?.id;
-            if (!orderId) return [null, null];
-            const res = await getShipmentByOrderId(orderId);
-            return [orderId, res.success ? res.data : null];
-        }));
+        const pairs = await Promise.all([
+            ...paidOrders.map(async (order) => {
+                const orderId = order?.orderId || order?.id;
+                if (!orderId) return [null, null];
+                const res = await getShipmentByOrderId(orderId);
+                return [orderId, res.success ? res.data : null];
+            }),
+            ...completedCustomOrders.map(async (order) => {
+                const customOrderId = order?.customOrderId || order?.id;
+                if (!customOrderId) return [null, null];
+                const res = await getShipmentByOrderId(customOrderId);
+                return [customOrderId, res.success ? res.data : null];
+            }),
+        ]);
 
         const nextMap = Object.fromEntries(pairs.filter(([key]) => Boolean(key)));
         setShipments(nextMap);
@@ -228,7 +237,10 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     }, [orders, customOrders, orderTypeFilter, orderSortDirection]);
 
     const selectedOrder = useMemo(() => shipmentCandidates.find((order) => String(order?.orderId || order?.id || order?.customOrderId) === String(selectedOrderId)) || null, [shipmentCandidates, selectedOrderId]);
-    const selectedShipment = selectedOrder ? shipments[selectedOrder.orderId || selectedOrder.id] : null;
+    const selectedOrderShipmentKey = selectedOrder?.shipmentSource?.toUpperCase() === 'CUSTOM'
+        ? (selectedOrder?.customOrderId || selectedOrder?.id)
+        : (selectedOrder?.orderId || selectedOrder?.id);
+    const selectedShipment = selectedOrder ? shipments[selectedOrderShipmentKey] : null;
     const selectedProfile = selectedOrder ? profileByAccountId[String(selectedOrder.customerId || selectedOrder.accountId || selectedOrder.customerAccountId || selectedOrder.buyerAccountId || '')] || null : null;
     const selectedProfileKey = String(selectedOrder?.customerId || selectedOrder?.accountId || selectedOrder?.customerAccountId || selectedOrder?.buyerAccountId || '').trim();
 
@@ -422,7 +434,8 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     };
 
     const handleCreateShipment = async () => {
-        if (!selectedOrder?.orderId || shippingSubmitting || isShipmentLocked) return;
+        const selectedOrderIdValue = selectedOrder?.customOrderId || selectedOrder?.id || selectedOrder?.orderId;
+        if (!selectedOrderIdValue || shippingSubmitting || isShipmentLocked) return;
         if (!shipmentForm.recipientName.trim() || !shipmentForm.recipientPhone.trim() || !shipmentForm.deliveryAddress.trim()) {
             appToast.error('Thiếu thông tin giao hàng', 'Vui lòng nhập đầy đủ người nhận, số điện thoại và địa chỉ.');
             return;
@@ -438,15 +451,20 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
 
         setShippingSubmitting(true);
         try {
+            const isCustomOrder = String(selectedOrder?.shipmentSource || '').toUpperCase() === 'CUSTOM';
+            const customOrderId = isCustomOrder ? (selectedOrder?.customOrderId || selectedOrder?.id || null) : null;
+            const orderId = !isCustomOrder ? (selectedOrder?.orderId || selectedOrder?.id || null) : null;
+            const orderValue = parseInputMoney(shipmentForm.orderValue) || selectedOrder?.total || selectedOrder?.totalPrice || 0;
+
             const res = await createShipment({
-                orderId: selectedOrder.orderId,
-                customOrderId: selectedOrder?.customOrderId || selectedOrder?.id || undefined,
+                customOrderId,
+                orderId,
                 recipientName: shipmentForm.recipientName.trim(),
                 recipientPhone: shipmentForm.recipientPhone.trim(),
                 deliveryAddress: shipmentForm.deliveryAddress.trim(),
                 toDistrictId: resolvedDistrictId,
                 toWardCode: resolvedWardCode,
-                orderValue: parseInputMoney(shipmentForm.orderValue) || selectedOrder?.total || selectedOrder?.totalPrice || 0,
+                orderValue,
                 weight: shipmentForm.weight,
                 length: shipmentForm.length,
                 width: shipmentForm.width,

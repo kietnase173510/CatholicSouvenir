@@ -11,6 +11,7 @@ import {
     getCustomOrderRefundEstimate,
     getCustomOrderStages,
     getUserProfileById,
+    startStage,
     updateCustomOrderStatus,
     uploadStageProof,
 } from '../../services/customRequestService';
@@ -384,6 +385,27 @@ const ArtisanOrderDetailPage = () => {
         loadAll();
     };
 
+    const handleStartStage = async (stage) => {
+        const stageId = stage?.stageId ?? stage?.id;
+        if (!stageId || submittingStageId) return;
+        if (isCancelledOrder) {
+            appToast.warning('Đơn hàng đã hủy', 'Không thao tác được.');
+            return;
+        }
+
+        setSubmittingStageId(String(stageId));
+        const res = await startStage(stageId);
+        setSubmittingStageId('');
+
+        if (!res.success) {
+            appToast.error('Không thể bắt đầu stage', res.error || 'Vui lòng thử lại');
+            return;
+        }
+
+        appToast.success(`Đã bắt đầu giai đoạn ${stage?.stageName || ''}`);
+        loadAll();
+    };
+
     const handleCompleteStage = async (stage) => {
         const stageId = stage?.stageId ?? stage?.id;
         if (!stageId || submittingStageId) return;
@@ -750,18 +772,30 @@ const ArtisanOrderDetailPage = () => {
                                                                 onChange={(e) => setNotesByStage((prev) => ({ ...prev, [String(stageId)]: e.target.value }))}
                                                                 disabled={isCancelledOrder}
                                                             />
-                                                            <button
-                                                                type="button"
-                                                                className="btn btn-primary"
-                                                                disabled={submittingStageId === String(stageId) || completed || isCancelledOrder}
-                                                                onClick={() => handleCompleteStage(stage)}
-                                                            >
-                                                                {isCancelledOrder
-                                                                    ? 'Đơn đã hủy'
-                                                                    : submittingStageId === String(stageId) || completed
-                                                                        ? 'Đã hoàn thành'
-                                                                        : `Đánh dấu hoàn thành giai đoạn ${idx + 1}`}
-                                                            </button>
+                                                            <div className="stage-action-row">
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-outline"
+                                                                    disabled={submittingStageId === String(stageId) || completed || isCancelledOrder}
+                                                                    onClick={() => handleStartStage(stage)}
+                                                                >
+                                                                    {submittingStageId === String(stageId)
+                                                                        ? 'Đang xử lý...'
+                                                                        : 'Bắt đầu làm'}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-primary"
+                                                                    disabled={submittingStageId === String(stageId) || completed || isCancelledOrder}
+                                                                    onClick={() => handleCompleteStage(stage)}
+                                                                >
+                                                                    {isCancelledOrder
+                                                                        ? 'Đơn đã hủy'
+                                                                        : submittingStageId === String(stageId) || completed
+                                                                            ? 'Đã hoàn thành'
+                                                                            : `Đánh dấu hoàn thành giai đoạn ${idx + 1}`}
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     )}
 
