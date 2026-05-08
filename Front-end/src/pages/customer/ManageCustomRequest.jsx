@@ -125,7 +125,7 @@ const StatCard = ({ icon, label, value, hint }) => (
     </div>
 );
 
-const DetailModalContent = ({ detail, selectedOrderId, setDetailOpen, navigate }) => {
+const DetailModalContent = ({ detail, selectedOrderId, setDetailOpen, onCancelOrder, navigate }) => {
     const statusMeta = getStatusMeta(detail?.status);
     const stages = Array.isArray(detail?.stages) ? detail.stages : [];
     const completedStages = stages.filter((stage) => ['COMPLETED', 'PAID'].includes(String(stage?.status || '').toUpperCase())).length;
@@ -664,6 +664,7 @@ const ManageCustomRequestPage = () => {
                                 detail={detail}
                                 selectedOrderId={selectedOrderId}
                                 setDetailOpen={setDetailOpen}
+                                onCancelOrder={() => openCancelModal(selectedOrderId)}
                                 navigate={navigate}
                             />
                         ) : (
