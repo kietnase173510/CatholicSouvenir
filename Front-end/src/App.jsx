@@ -24,6 +24,7 @@ import ArtisanCentrePage from './pages/ArtisanCentrePage'
 import ShopPage from './pages/ShopPage'
 import CustomRequestsManagePage from './pages/customer/CustomRequestsManagePage'
 import CustomRequestPage from './pages/customer/CustomRequestPage'
+import ManageCustomRequestPage from './pages/customer/ManageCustomRequest'
 import CustomRequestDetailPage from './pages/customer/CustomRequestDetailPage'
 import PendingCustomOrdersPage from './pages/customer/PendingCustomOrdersPage'
 import ChatPage from './pages/customer/ChatPage'
@@ -164,6 +165,7 @@ function App() {
         <Route path="/templates" element={<TemplateCatalogPage />} />
         <Route path="/template-order" element={<TemplateOrderPage />} />
         <Route path="/custom-requests" element={<CustomRequestsManagePage />} />
+        <Route path="/manage-custom-request" element={<ManageCustomRequestPage />} />
         <Route path="/custom-requests/pending-confirmation" element={<PendingCustomOrdersPage />} />
         <Route path="/custom-requests/:id" element={<CustomRequestDetailPage />} />
 

@@ -113,6 +113,7 @@ export const createCustomRequestV2 = async (payload) => {
             minBudget: Number(payload?.minBudget || 0),
             maxBudget: Number(payload?.maxBudget || 0),
             referenceImages: Array.isArray(payload?.referenceImages) ? payload.referenceImages.filter(Boolean) : [],
+            referenceImageUrl: String(payload?.referenceImageUrl || '').trim(),
             aiConceptImageUrl: String(payload?.aiConceptImageUrl || '').trim(),
             aiImagePrompt: String(payload?.aiImagePrompt || '').trim(),
         };
@@ -325,6 +326,44 @@ export const uploadReferenceImage = async (file) => {
             success: false,
             error: mapError(error, 'Upload ảnh lên Supabase thất bại.'),
         };
+    }
+};
+
+export const validateImageUrl = async (imageUrl) => {
+    const url = String(imageUrl || '').trim();
+    if (!url) return { success: false, error: 'Thiếu URL ảnh.' };
+
+    try {
+        const response = await api.post('/images/validate', { imageUrl: url });
+        const normalized = normalizeResponse(response);
+
+        if (!isSuccessCode(normalized.code)) {
+            return { success: false, error: normalized.message || 'Ảnh không hợp lệ.', data: normalized.data || null };
+        }
+
+        return { success: true, data: normalized.data || { valid: true, confidence: 1 } };
+    } catch (error) {
+        return { success: false, error: mapError(error, 'Ảnh không hợp lệ.'), data: null };
+    }
+};
+
+export const generateConceptImage = async ({ description = '', requestId = '' } = {}) => {
+    const text = String(description || '').trim();
+    if (!text) return { success: false, error: 'Thiếu mô tả để tạo ảnh AI.' };
+
+    try {
+        const body = { description: text };
+        const endpoint = requestId ? `/custom-requests/${requestId}/regenerate-image` : '/custom-requests/regenerate-image';
+        const response = await api.post(endpoint, body);
+        const normalized = normalizeResponse(response);
+
+        if (!isSuccessCode(normalized.code)) {
+            return { success: false, error: normalized.message || 'Không tạo được ảnh AI.', data: null };
+        }
+
+        return { success: true, data: normalized.data || null };
+    } catch (error) {
+        return { success: false, error: mapError(error, 'Không tạo được ảnh AI.'), data: null };
     }
 };
 

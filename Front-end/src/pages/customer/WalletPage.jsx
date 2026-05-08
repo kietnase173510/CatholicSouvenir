@@ -296,7 +296,7 @@ const WalletPage = ({ embedded = false }) => {
                             <p className="wallet-hero-meta">Cập nhật: {wallet?.updatedAt ? dayjs(wallet.updatedAt).format('DD/MM/YYYY') : '—'}</p>
                         </article>
 
-                        <div className="wallet-stats-grid">
+                        {/* <div className="wallet-stats-grid">
                             <article className="wallet-stat-card">
                                 <p>Tổng đã nhận</p>
                                 <h3 className="wallet-amount-plus">+ {formatCurrency(stats.totalIn)}</h3>
@@ -305,7 +305,7 @@ const WalletPage = ({ embedded = false }) => {
                                 <p>Đã trừ</p>
                                 <h3 className="wallet-amount-minus">- {formatCurrency(stats.totalOut)}</h3>
                             </article>
-                        </div>
+                        </div> */}
                     </section>
 
                     <section className="wallet-table-section">

@@ -805,19 +805,21 @@ const ArtisanOrderDetailPage = () => {
                             <article className="card-box side-card">
                                 <h3>Cập nhật trạng thái</h3>
                                 <div className="status-update-panel">
-                                    <select
-                                        className="form-input"
-                                        value={statusDraft}
-                                        onChange={(e) => setStatusDraft(e.target.value)}
-                                        disabled={!allowedNextStatuses.length || statusSubmitting}
-                                    >
-                                        <option value="">Chọn trạng thái mới</option>
-                                        {allowedNextStatuses.map((optionValue) => (
-                                            <option key={optionValue} value={optionValue}>
-                                                {getStatusLabel(optionValue)}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div className="status-select-wrap">
+                                        <select
+                                            className="form-input status-select"
+                                            value={statusDraft}
+                                            onChange={(e) => setStatusDraft(e.target.value)}
+                                            disabled={!allowedNextStatuses.length || statusSubmitting}
+                                        >
+                                            <option value="">Chọn trạng thái mới</option>
+                                            {allowedNextStatuses.map((optionValue) => (
+                                                <option key={optionValue} value={optionValue}>
+                                                    {getStatusLabel(optionValue)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                     <button
                                         type="button"
                                         className="btn btn-outline"
