@@ -28,6 +28,7 @@ const AdminRefundTransactionsPage = () => {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [statusFilter, setStatusFilter] = useState('');
+  const [sortOrder, setSortOrder] = useState('newest');
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [retryingId, setRetryingId] = useState('');
@@ -42,7 +43,13 @@ const AdminRefundTransactionsPage = () => {
       setTotalPages(1);
     } else {
       const data = res.data || {};
-      setItems(Array.isArray(data.content) ? data.content : complaintService.toArray(data));
+      const rawItems = Array.isArray(data.content) ? data.content : complaintService.toArray(data);
+      const sortedItems = [...rawItems].sort((a, b) => {
+        const dateA = dayjs(a?.createdAt || 0).valueOf();
+        const dateB = dayjs(b?.createdAt || 0).valueOf();
+        return sortOrder === 'oldest' ? dateA - dateB : dateB - dateA;
+      });
+      setItems(sortedItems);
       setTotalPages(Number(data.totalPages || 1));
     }
     setLoading(false);
@@ -51,7 +58,7 @@ const AdminRefundTransactionsPage = () => {
   useEffect(() => {
     if (isAuthenticated && canView) loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, canView, page, statusFilter]);
+  }, [isAuthenticated, canView, page, statusFilter, sortOrder]);
 
   const stats = useMemo(() => {
     const failed = items.filter((i) => String(i.status).toUpperCase() === 'FAILED').length;
@@ -106,10 +113,22 @@ const AdminRefundTransactionsPage = () => {
           <h2>Bộ lọc</h2>
           <p>Chọn trạng thái giao dịch để thu hẹp danh sách.</p>
         </div>
-        <select value={statusFilter} onChange={(e) => { setPage(0); setStatusFilter(e.target.value); }}>
-          <option value="">Tất cả trạng thái</option>
-          {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-        </select>
+        <div className="admin-refund-toolbar-controls">
+          <label className="admin-refund-control">
+            <span>Sắp xếp</span>
+            <select value={sortOrder} onChange={(e) => { setPage(0); setSortOrder(e.target.value); }}>
+              <option value="newest">Mới nhất</option>
+              <option value="oldest">Cũ nhất</option>
+            </select>
+          </label>
+          <label className="admin-refund-control">
+            <span>Trạng thái</span>
+            <select value={statusFilter} onChange={(e) => { setPage(0); setStatusFilter(e.target.value); }}>
+              <option value="">Tất cả trạng thái</option>
+              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+            </select>
+          </label>
+        </div>
       </section>
 
       <section className="admin-refund-list">

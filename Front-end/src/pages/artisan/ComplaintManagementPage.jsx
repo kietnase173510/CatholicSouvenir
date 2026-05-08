@@ -273,10 +273,10 @@ const ComplaintManagementPage = ({ embedded = false }) => {
                                                     <span>Nội dung phản hồi</span>
                                                     <textarea rows="5" value={responseText} onChange={(e) => setResponseText(e.target.value)} />
                                                 </label>
-                                                <label className="checkbox-row">
+                                                {/* <label className="checkbox-row">
                                                     <input type="checkbox" checked={requireReturn} onChange={(e) => setRequireReturn(e.target.checked)} />
                                                     <span>Yêu cầu khách trả hàng</span>
-                                                </label>
+                                                </label> */}
                                             </div>
                                         ) : (
                                             <p className="detail-empty">{selected.artisanResponse || 'Chưa có phản hồi.'}</p>
