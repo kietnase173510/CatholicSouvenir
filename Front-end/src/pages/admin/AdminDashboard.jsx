@@ -24,7 +24,7 @@ const DASHBOARD_PRESETS = [
     { id: 365, label: 'Năm này' },
 ];
 
-const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} VNĐ`;
+const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} `;
 const formatNumber = (value) => new Intl.NumberFormat('vi-VN').format(Number(value || 0));
 
 const emptyDashboard = {

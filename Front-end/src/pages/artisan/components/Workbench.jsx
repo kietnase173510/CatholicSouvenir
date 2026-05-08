@@ -203,9 +203,52 @@ const buildDashboardModel = (payload) => {
 };
 
 const resolveNotificationTarget = (notification) => {
-    const candidate = notification?.targetUrl || notification?.url || notification?.link || notification?.actionUrl || notification?.data?.url || notification?.data?.targetUrl || '';
-    if (typeof candidate !== 'string' || !candidate.trim()) return null;
-    return candidate.startsWith('/') ? candidate : `/${candidate.replace(/^\/+/, '')}`;
+    const type = String(notification?.type || '').toUpperCase();
+    const relatedEntityId = notification?.relatedEntityId;
+    const actionType = String(notification?.actionType || '').toUpperCase();
+
+    const typeMap = {
+        WITHDRAWAL_REQUESTED: '/artisan/wallet',
+        ARTISAN_RESPONDED: '/artisan/complaints',
+        OFFLINE_RECOVERY_REQUIRED: relatedEntityId ? `/artisan/orders/${relatedEntityId}` : '/artisan/orders',
+        ORDER_CREATED: '/artisan/orders',
+        ORDER_PAID: '/artisan/orders',
+        ORDER_UPDATED: '/artisan/orders',
+        CUSTOM_ORDER_CREATED: '/artisan/requests',
+        CUSTOM_ORDER_UPDATED: '/artisan/requests',
+        CUSTOM_REQUEST_CREATED: '/artisan/requests',
+        CUSTOM_REQUEST_UPDATED: '/artisan/requests',
+        MESSAGE_RECEIVED: '/artisan/messages',
+        CHAT_MESSAGE: '/artisan/messages',
+        REVIEW_REQUESTED: '/artisan/complaints',
+        TEMPLATE_REVIEW_REQUIRED: '/artisan/templates',
+        TEMPLATE_REVIEW_APPROVED: '/artisan/templates',
+        TEMPLATE_REVIEW_REJECTED: '/artisan/templates',
+    };
+
+    if (actionType === 'VIEW_REQUEST' && relatedEntityId) {
+        return '/artisan/wallet';
+    }
+
+    if (actionType === 'REVIEW_RECOVERY' && relatedEntityId) {
+        return `/artisan/orders/${relatedEntityId}`;
+    }
+
+    const candidate = notification?.targetUrl || notification?.url || notification?.link || notification?.actionUrl || notification?.data?.url || notification?.data?.targetUrl;
+    if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.startsWith('/') ? candidate : `/${candidate.replace(/^\/+/, '')}`;
+    }
+
+    return typeMap[type] || null;
+};
+
+const getNotificationIconClass = (notification) => {
+    const type = String(notification?.type || '').toUpperCase();
+    if (type.includes('WITHDRAWAL')) return 'wb-notification-icon--amber';
+    if (type.includes('RECOVERY')) return 'wb-notification-icon--red';
+    if (type.includes('MESSAGE') || type.includes('CHAT')) return 'wb-notification-icon--blue';
+    if (type.includes('COMPLAINT') || type.includes('RESPONDED') || type.includes('REVIEW')) return 'wb-notification-icon--purple';
+    return 'wb-notification-icon--green';
 };
 
 const Workbench = ({ user }) => {
@@ -225,6 +268,8 @@ const Workbench = ({ user }) => {
     const [notificationCount, setNotificationCount] = useState(0);
     const [notifications, setNotifications] = useState([]);
     const [showNotifications, setShowNotifications] = useState(false);
+    const [notificationsLoading, setNotificationsLoading] = useState(false);
+    const [notificationsError, setNotificationsError] = useState('');
     const [dashboard, setDashboard] = useState(null);
     const [loadingDashboard, setLoadingDashboard] = useState(true);
     const [dashboardError, setDashboardError] = useState('');
@@ -386,7 +431,7 @@ const Workbench = ({ user }) => {
 
         const notificationTask = Promise.all([
             getUnreadNotificationCount(),
-            getNotifications({ page: 0, size: 5 }),
+            getNotifications({ page: 0, size: 20 }),
         ])
             .then(([countRes, listRes]) => {
                 if (!active) return;
@@ -583,14 +628,15 @@ const Workbench = ({ user }) => {
     const handleNotificationClick = async (notification) => {
         if (!notification) return;
 
-        if (!notification?.read && notification?.id) {
-            const res = await markNotificationAsRead(notification.id);
+        const notificationId = notification?.notificationId || notification?.id;
+        if (!notification?.isRead && notificationId) {
+            const res = await markNotificationAsRead(notificationId);
             if (!res.success) {
                 appToast.error('Không thể đánh dấu đã đọc', res.error || 'Vui lòng thử lại.');
                 return;
             }
 
-            setNotifications((prev) => prev.map((item) => (item?.id === notification.id ? { ...item, read: true } : item)));
+            setNotifications((prev) => prev.map((item) => (item?.notificationId === notificationId || item?.id === notificationId ? { ...item, isRead: true, read: true } : item)));
             setNotificationCount((prev) => Math.max(0, prev - 1));
         }
 
@@ -599,6 +645,25 @@ const Workbench = ({ user }) => {
 
         if (targetUrl) {
             navigate(targetUrl);
+        }
+    };
+
+    const handleMarkAllNotificationsAsRead = async () => {
+        setNotificationsLoading(true);
+        setNotificationsError('');
+        try {
+            const res = await markAllNotificationsAsRead();
+            if (!res.success) {
+                appToast.error('Không thể đánh dấu đã đọc', res.error || 'Vui lòng thử lại.');
+                return;
+            }
+
+            setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true, read: true })));
+            setNotificationCount(0);
+        } catch (err) {
+            setNotificationsError(err?.response?.data?.message || err?.message || 'Không thể đánh dấu tất cả đã đọc.');
+        } finally {
+            setNotificationsLoading(false);
         }
     };
 
@@ -622,41 +687,59 @@ const Workbench = ({ user }) => {
                             <div className="wb-notification-dropdown" role="dialog" aria-label="Danh sách thông báo">
                                 <div className="wb-notification-dropdown-header">
                                     <h4>Thông báo mới</h4>
-                                    <button
-                                        type="button"
-                                        className="wb-notification-mark-all"
-                                        onClick={async () => {
-                                            const res = await markAllNotificationsAsRead();
-                                            if (res.success) {
-                                                setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
-                                                setNotificationCount(0);
-                                            } else {
-                                                appToast.error('Không thể đánh dấu đã đọc', res.error || 'Vui lòng thử lại.');
-                                            }
-                                        }}
-                                    >
-                                        Đánh dấu tất cả đã đọc
-                                    </button>
+                                    <div className="wb-notification-actions">
+                                        <button
+                                            type="button"
+                                            className="wb-notification-mark-all"
+                                            onClick={handleMarkAllNotificationsAsRead}
+                                            disabled={notificationsLoading || notificationCount === 0}
+                                        >
+                                            Đánh dấu tất cả đã đọc
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="wb-notification-mark-all"
+                                            onClick={async () => {
+                                                const refreshed = await Promise.all([getUnreadNotificationCount(), getNotifications({ page: 0, size: 20 })]);
+                                                const [countRes, listRes] = refreshed;
+                                                if (countRes?.success) setNotificationCount(Number(countRes.data) || 0);
+                                                if (listRes?.success) {
+                                                    setNotifications(Array.isArray(listRes.data?.content) ? listRes.data.content : []);
+                                                }
+                                            }}
+                                        >
+                                            Làm mới
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="wb-notification-list">
-                                    {notifications.length === 0 ? (
+                                    {notificationsError ? (
+                                        <div className="wb-notification-empty">{notificationsError}</div>
+                                    ) : notifications.length === 0 ? (
                                         <div className="wb-notification-empty">Chưa có thông báo mới.</div>
                                     ) : (
                                         notifications.map((notification, index) => (
                                             <button
-                                                key={notification?.id || index}
+                                                key={notification?.notificationId || notification?.id || index}
                                                 type="button"
-                                                className={`wb-notification-item ${notification?.read ? '' : 'unread'}`}
+                                                className={`wb-notification-item ${notification?.isRead ? 'read' : 'unread'}`}
                                                 onClick={() => {
                                                     void handleNotificationClick(notification);
                                                 }}
                                             >
-                                                <div className="wb-notification-item-top">
-                                                    <span className="wb-notification-title">{notification?.title || notification?.type || 'Thông báo'}</span>
-                                                    <span className={`wb-notification-priority ${String(notification?.priority || 'low').toLowerCase()}`}>{notification?.priority || 'LOW'}</span>
+                                                <div className={`wb-notification-icon ${getNotificationIconClass(notification)}`}>
+                                                    <FiMessageCircle />
                                                 </div>
-                                                <p className="wb-notification-message">{notification?.message || notification?.content || 'Bạn có một thông báo mới.'}</p>
-                                                <span className="wb-notification-time">{notification?.createdAt || notification?.time || ''}</span>
+                                                <div className="wb-notification-content">
+                                                    <div className="wb-notification-item-top">
+                                                        <span className="wb-notification-title">{notification?.title || notification?.type || 'Thông báo'}</span>
+                                                    </div>
+                                                    <p className="wb-notification-message">{notification?.message || notification?.content || 'Bạn có một thông báo mới.'}</p>
+                                                    <div className="wb-notification-meta-row">
+                                                        <span className="wb-notification-time">{formatDateTime(notification?.createdAt || notification?.time || '')}</span>
+                                                        <span className="wb-notification-chev">→</span>
+                                                    </div>
+                                                </div>
                                             </button>
                                         ))
                                     )}
