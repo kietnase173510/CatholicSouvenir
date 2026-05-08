@@ -201,6 +201,19 @@ export const getOrderById = async (orderId) => {
     }
 };
 
+export const getCommissionRate = async () => {
+    try {
+        const response = await api.get('/commission/rate');
+        const normalized = normalizeResponse(response);
+        if (!isSuccessCode(normalized.code)) {
+            return { success: false, error: normalized.message || 'Không tải được commission rate.' };
+        }
+        return { success: true, data: normalized.data ?? null };
+    } catch (error) {
+        return { success: false, error: mapError(error, 'Không tải được commission rate. Vui lòng thử lại.') };
+    }
+};
+
 export const approveAdminComplaint = async (id, body) => {
     if (!id) return { success: false, error: 'Thiếu mã khiếu nại.' };
     try {
@@ -294,6 +307,7 @@ export default {
     getAdminComplaints,
     getAdminComplaintDetail,
     getOrderById,
+    getCommissionRate,
     approveAdminComplaint,
     rejectAdminComplaint,
     retryAdminRefundTransaction,

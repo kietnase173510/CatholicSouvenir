@@ -9,6 +9,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
     padding: 0 24px;
     position: sticky;
     top: 0;
@@ -48,6 +49,34 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.dashboard-range-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid #d6eadc;
+    border-radius: 12px;
+    background: #f8fffa;
+    color: #475569;
+}
+
+.dashboard-range-picker span {
+    font-size: 0.86rem;
+    font-weight: 600;
+}
+
+.dashboard-range-picker select {
+    border: 1px solid #d6eadc;
+    background: #fff;
+    color: #0f172a;
+    border-radius: 10px;
+    padding: 7px 10px;
+    outline: none;
+    font-size: 0.88rem;
 }
 
 .dashboard-icon-btn {
@@ -63,12 +92,143 @@
     justify-content: center;
     cursor: pointer;
     transition: all 0.2s ease;
+    position: relative;
+}
+
+.dashboard-notification-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    border: 2px solid #fff;
 }
 
 .dashboard-icon-btn:hover {
     background: #ecfdf3;
     border-color: #bbf7d0;
     color: #166534;
+}
+
+.dashboard-notification-wrap {
+    position: relative;
+}
+
+.dashboard-notification-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(420px, 82vw);
+    background: #fff;
+    border: 1px solid #d6eadc;
+    border-radius: 16px;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+    z-index: 20;
+    overflow: hidden;
+}
+
+.dashboard-notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #eef2f7;
+    background: #f8fffa;
+}
+
+.dashboard-notification-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.dashboard-notification-header strong {
+    display: block;
+    color: #0f172a;
+}
+
+.dashboard-notification-header span {
+    color: #64748b;
+    font-size: 0.84rem;
+}
+
+.dashboard-notification-list {
+    max-height: 420px;
+    overflow: auto;
+}
+
+.dashboard-notification-item {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 10px 1fr auto;
+    gap: 12px;
+    padding: 14px 16px;
+    border: none;
+    border-bottom: 1px solid #f1f5f9;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+    align-items: start;
+}
+
+.dashboard-notification-item:hover {
+    background: #f8fffa;
+}
+
+.dashboard-notification-item.unread .dashboard-notification-content strong {
+    color: #0f172a;
+}
+
+.dashboard-notification-item.read .dashboard-notification-content strong,
+.dashboard-notification-item.read .dashboard-notification-content p,
+.dashboard-notification-item.read .dashboard-notification-content span {
+    opacity: 0.7;
+}
+
+.dashboard-notification-dot {
+    width: 10px;
+    height: 10px;
+    margin-top: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+}
+
+.dashboard-notification-item.read .dashboard-notification-dot {
+    background: #cbd5e1;
+}
+
+.dashboard-notification-content strong,
+.dashboard-notification-content p,
+.dashboard-notification-content span {
+    display: block;
+}
+
+.dashboard-notification-content p {
+    margin: 6px 0 4px;
+    color: #475569;
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.dashboard-notification-content span {
+    color: #94a3b8;
+    font-size: 0.78rem;
+}
+
+.dashboard-notification-link {
+    color: #94a3b8;
+    margin-top: 4px;
 }
 
 .dashboard-body {
@@ -294,6 +454,11 @@
     grid-column: 1 / -1;
 }
 
+.chart-card--financial {
+    grid-column: 2;
+    grid-row: 2;
+}
+
 .chart-bars {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
@@ -500,8 +665,14 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .dashboard-grid {
+    .dashboard-grid,
+    .dashboard-grid--charts {
         grid-template-columns: 1fr;
+    }
+
+    .chart-card--financial {
+        grid-column: auto;
+        grid-row: auto;
     }
 }
 

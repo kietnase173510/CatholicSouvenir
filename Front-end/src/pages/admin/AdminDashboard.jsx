@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     FiBell,
     FiCheckCircle,
@@ -10,12 +11,18 @@ import {
     FiTrendingUp,
     FiTruck,
     FiUsers,
+    FiExternalLink,
 } from 'react-icons/fi';
 import api from '../../cofig/api';
 import './admin-common.css';
 import './AdminDashboard.css';
 
-const DASHBOARD_DAYS = 30;
+const DASHBOARD_PRESETS = [
+    { id: 7, label: 'Tuần này' },
+    { id: 30, label: 'Tháng này' },
+    { id: 90, label: 'Quý này' },
+    { id: 365, label: 'Năm này' },
+];
 
 const formatCurrency = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} VNĐ`;
 const formatNumber = (value) => new Intl.NumberFormat('vi-VN').format(Number(value || 0));
@@ -27,11 +34,15 @@ const emptyDashboard = {
     customOrderStats: { averageOrderValue: 0, conversionRate: 0, totalOrders: 0, totalRequests: 0 },
     complaintStats: { approvedComplaints: 0, pendingComplaints: 0, rejectedComplaints: 0, totalComplaints: 0, totalRefundAmount: 0 },
     revenueBreakdown: { productRevenue: 0, templateRevenue: 0, customRevenue: 0, totalCommission: 0 },
+    platformFinancials: { totalCommissionEarned: 0, totalLockedBalance: 0, totalAvailableBalance: 0, totalPlatformRevenue: 0 },
+    refundStats: { totalRefunds: 0, totalRefundAmount: 0, totalCancellations: 0, totalCancellationAmount: 0, refundRate: 0 },
+    withdrawalStats: { totalRequests: 0, pendingRequests: 0, approvedRequests: 0, rejectedRequests: 0, totalWithdrawnAmount: 0, pendingWithdrawalAmount: 0 },
     productAnalytics: { approvedProducts: 0, averagePrice: 0, pendingProducts: 0, totalProducts: 0 },
     orderStatus: {},
     topArtisans: [],
     topCustomers: [],
     topProducts: [],
+    topTemplates: [],
     revenueChart: [],
 };
 
@@ -59,90 +70,142 @@ const buildCategoryBars = (items, valueKey = 'revenue') => {
 };
 
 const AdminDashboard = () => {
+    const navigate = useNavigate();
     const [dashboard, setDashboard] = useState(emptyDashboard);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [selectedDays, setSelectedDays] = useState(30);
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [notificationsLoading, setNotificationsLoading] = useState(false);
+    const [notificationsError, setNotificationsError] = useState('');
+    const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+    const fetchDashboard = async (days = selectedDays) => {
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await api.get('/admin/dashboard', { params: { days } });
+            const payload = response?.data?.data ?? response?.data ?? {};
+            const merged = {
+                ...emptyDashboard,
+                ...payload,
+                summary: { ...emptyDashboard.summary, ...(payload.summary || {}) },
+                customerStats: { ...emptyDashboard.customerStats, ...(payload.customerStats || {}) },
+                artisanStats: { ...emptyDashboard.artisanStats, ...(payload.artisanStats || {}) },
+                customOrderStats: { ...emptyDashboard.customOrderStats, ...(payload.customOrderStats || {}) },
+                complaintStats: { ...emptyDashboard.complaintStats, ...(payload.complaintStats || {}) },
+                revenueBreakdown: { ...emptyDashboard.revenueBreakdown, ...(payload.revenueBreakdown || {}) },
+                platformFinancials: { ...emptyDashboard.platformFinancials, ...(payload.platformFinancials || {}) },
+                refundStats: { ...emptyDashboard.refundStats, ...(payload.refundStats || {}) },
+                withdrawalStats: { ...emptyDashboard.withdrawalStats, ...(payload.withdrawalStats || {}) },
+                productAnalytics: { ...emptyDashboard.productAnalytics, ...(payload.productAnalytics || {}) },
+                orderStatus: payload.orderStatus || {},
+                topArtisans: Array.isArray(payload.topArtisans) ? payload.topArtisans : [],
+                topCustomers: Array.isArray(payload.topCustomers) ? payload.topCustomers : [],
+                topProducts: Array.isArray(payload.topProducts) ? payload.topProducts : [],
+                topTemplates: Array.isArray(payload.topTemplates) ? payload.topTemplates : [],
+                revenueChart: Array.isArray(payload.revenueChart) ? payload.revenueChart : [],
+            };
+
+            setDashboard(merged);
+            setSelectedDays(days);
+            console.info('[AdminDashboard] Loaded dashboard data', {
+                days,
+                summary: merged.summary,
+                artisanStats: merged.artisanStats,
+                customerStats: merged.customerStats,
+                productAnalytics: merged.productAnalytics,
+                topArtisans: merged.topArtisans.length,
+                topCustomers: merged.topCustomers.length,
+                topProducts: merged.topProducts.length,
+                topTemplates: merged.topTemplates.length,
+                revenueChartPoints: merged.revenueChart.length,
+            });
+        } catch (err) {
+            const message = err?.response?.data?.message || err?.message || 'Không tải được dashboard.';
+            setError(message);
+            console.error('[AdminDashboard] Failed to load dashboard data', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchUnreadCount = async () => {
+        try {
+            const response = await api.get('/notifications/unread-count');
+            const payload = response?.data?.data ?? response?.data ?? 0;
+            setUnreadCount(Number(payload) || 0);
+        } catch (err) {
+            console.error('[AdminDashboard] Failed to load unread notification count', err);
+        }
+    };
+
+    const fetchNotifications = async () => {
+        setNotificationsLoading(true);
+        setNotificationsError('');
+
+        try {
+            const [allResponse, unreadResponse] = await Promise.all([
+                api.get('/notifications', { params: { page: 0, size: 20 } }),
+                api.get('/notifications/unread-count'),
+            ]);
+
+            const allPayload = allResponse?.data?.data ?? allResponse?.data ?? {};
+            const unreadPayload = unreadResponse?.data?.data ?? unreadResponse?.data ?? 0;
+            setNotifications(Array.isArray(allPayload.content) ? allPayload.content : []);
+            setUnreadCount(Number(unreadPayload) || 0);
+        } catch (err) {
+            setNotificationsError(err?.response?.data?.message || err?.message || 'Không tải được thông báo.');
+        } finally {
+            setNotificationsLoading(false);
+        }
+    };
+
+    const markNotificationAsRead = async (notificationId, redirectPath) => {
+        try {
+            await api.post(`/notifications/${notificationId}/read`);
+            setNotifications((prev) => prev.map((item) => (item.notificationId === notificationId ? { ...item, isRead: true } : item)));
+            fetchUnreadCount();
+            if (redirectPath) {
+                navigate(redirectPath);
+            }
+        } catch (err) {
+            setNotificationsError(err?.response?.data?.message || err?.message || 'Không đánh dấu đã đọc được.');
+        }
+    };
+
+    const markAllNotificationsAsRead = async () => {
+        try {
+            await api.post('/notifications/read-all');
+            setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+            setUnreadCount(0);
+        } catch (err) {
+            setNotificationsError(err?.response?.data?.message || err?.message || 'Không đánh dấu tất cả đã đọc được.');
+        }
+    };
 
     useEffect(() => {
-        let isMounted = true;
-
-        const loadDashboard = async () => {
-            setLoading(true);
-            setError('');
-
-            try {
-                const response = await api.get('/admin/dashboard', { params: { days: DASHBOARD_DAYS } });
-                const payload = response?.data?.data ?? response?.data ?? {};
-
-                if (!isMounted) return;
-
-                const merged = {
-                    ...emptyDashboard,
-                    ...payload,
-                    summary: { ...emptyDashboard.summary, ...(payload.summary || {}) },
-                    customerStats: { ...emptyDashboard.customerStats, ...(payload.customerStats || {}) },
-                    artisanStats: { ...emptyDashboard.artisanStats, ...(payload.artisanStats || {}) },
-                    customOrderStats: { ...emptyDashboard.customOrderStats, ...(payload.customOrderStats || {}) },
-                    complaintStats: { ...emptyDashboard.complaintStats, ...(payload.complaintStats || {}) },
-                    revenueBreakdown: { ...emptyDashboard.revenueBreakdown, ...(payload.revenueBreakdown || {}) },
-                    productAnalytics: { ...emptyDashboard.productAnalytics, ...(payload.productAnalytics || {}) },
-                    orderStatus: payload.orderStatus || {},
-                    topArtisans: Array.isArray(payload.topArtisans) ? payload.topArtisans : [],
-                    topCustomers: Array.isArray(payload.topCustomers) ? payload.topCustomers : [],
-                    topProducts: Array.isArray(payload.topProducts) ? payload.topProducts : [],
-                    topTemplates: Array.isArray(payload.topTemplates) ? payload.topTemplates : [],
-                    revenueChart: Array.isArray(payload.revenueChart) ? payload.revenueChart : [],
-                };
-
-                setDashboard(merged);
-                console.info('[AdminDashboard] Loaded dashboard data', {
-                    days: DASHBOARD_DAYS,
-                    summary: merged.summary,
-                    artisanStats: merged.artisanStats,
-                    customerStats: merged.customerStats,
-                    productAnalytics: merged.productAnalytics,
-                    topArtisans: merged.topArtisans.length,
-                    topCustomers: merged.topCustomers.length,
-                    topProducts: merged.topProducts.length,
-                    topTemplates: merged.topTemplates.length,
-                    revenueChartPoints: merged.revenueChart.length,
-                });
-            } catch (err) {
-                if (!isMounted) return;
-                const message = err?.response?.data?.message || err?.message || 'Không tải được dashboard.';
-                setError(message);
-                console.error('[AdminDashboard] Failed to load dashboard data', err);
-            } finally {
-                if (isMounted) {
-                    setLoading(false);
-                }
-            }
-        };
-
-        loadDashboard();
-        return () => {
-            isMounted = false;
-        };
+        fetchDashboard(30);
+        fetchUnreadCount();
     }, []);
+
+    useEffect(() => {
+        if (notificationsOpen && notifications.length === 0 && !notificationsLoading) {
+            fetchNotifications();
+        }
+    }, [notificationsOpen]);
 
     const kpis = useMemo(() => ([
         {
             id: 'revenue',
             title: 'Tổng doanh thu',
             value: formatCurrency(dashboard.summary.totalRevenue),
-            trend: `Trong ${DASHBOARD_DAYS} ngày gần nhất`,
+            trend: `Trong ${selectedDays} ngày gần nhất`,
             trendClass: 'up',
             icon: <FiTrendingUp />,
             iconClass: 'orange',
-        },
-        {
-            id: 'customers',
-            title: 'Khách hàng mới',
-            value: formatNumber(dashboard.customerStats.newCustomers),
-            trend: `${formatNumber(dashboard.customerStats.activeCustomers)} đang hoạt động`,
-            trendClass: 'up',
-            icon: <FiUsers />,
-            iconClass: 'amber',
         },
         {
             id: 'orders',
@@ -154,6 +217,15 @@ const AdminDashboard = () => {
             iconClass: 'blue',
         },
         {
+            id: 'customers',
+            title: 'Khách hàng',
+            value: formatNumber(dashboard.customerStats.totalCustomers),
+            trend: `${formatNumber(dashboard.customerStats.activeCustomers)} active • ${formatNumber(dashboard.customerStats.newCustomers)} mới`,
+            trendClass: 'up',
+            icon: <FiUsers />,
+            iconClass: 'amber',
+        },
+        {
             id: 'complaints',
             title: 'Khiếu nại',
             value: formatNumber(dashboard.complaintStats.totalComplaints),
@@ -162,12 +234,12 @@ const AdminDashboard = () => {
             icon: <FiCheckCircle />,
             iconClass: 'red',
         },
-    ]), [dashboard]);
+    ]), [dashboard, selectedDays]);
 
     const revenueTrend = useMemo(() => buildRevenueBars(dashboard.revenueChart), [dashboard.revenueChart]);
-    const orderStatusBars = useMemo(() => buildCategoryBars(Object.entries(dashboard.orderStatus || {}).map(([status, value]) => ({ id: status, label: status, value })), 'value'), [dashboard.orderStatus]);
     const topCustomerBars = useMemo(() => buildCategoryBars(dashboard.topCustomers.slice(0, 5), 'totalSpent'), [dashboard.topCustomers]);
     const topProductBars = useMemo(() => buildCategoryBars(dashboard.topProducts.slice(0, 5), 'revenue'), [dashboard.topProducts]);
+    const topArtisanBars = useMemo(() => buildCategoryBars(dashboard.topArtisans.slice(0, 5), 'totalRevenue'), [dashboard.topArtisans]);
 
     const recentActivities = useMemo(() => {
         const topCustomers = dashboard.topCustomers.slice(0, 4).map((customer, index) => ({
@@ -192,10 +264,11 @@ const AdminDashboard = () => {
     }, [dashboard.topCustomers, dashboard.topProducts]);
 
     const quickActions = useMemo(() => [
-        { id: 1, label: `Duyệt ${formatNumber(dashboard.artisanStats.pendingArtisans)} đơn đăng ký`, icon: <FiCheckCircle /> },
-        { id: 2, label: `Sản phẩm chờ duyệt: ${formatNumber(dashboard.productAnalytics.pendingProducts)}`, icon: <FiEdit3 /> },
-        { id: 3, label: `Khiếu nại chờ xử lý: ${formatNumber(dashboard.complaintStats.pendingComplaints)}`, icon: <FiMail /> },
-    ], [dashboard.artisanStats.pendingArtisans, dashboard.complaintStats.pendingComplaints, dashboard.productAnalytics.pendingProducts]);
+        { id: 1, label: `Duyệt ${formatNumber(dashboard.artisanStats.pendingArtisans)} đơn đăng ký`, icon: <FiCheckCircle />, onClick: () => navigate('/admin/artisan-applications') },
+        { id: 2, label: `Sản phẩm chờ duyệt: ${formatNumber(dashboard.productAnalytics.pendingProducts)}`, icon: <FiEdit3 />, onClick: () => navigate('/admin/products') },
+        { id: 3, label: `Khiếu nại chờ xử lý: ${formatNumber(dashboard.complaintStats.pendingComplaints)}`, icon: <FiMail />, onClick: () => navigate('/admin/complaints') },
+        { id: 4, label: `Yêu cầu rút tiền: ${formatNumber(dashboard.withdrawalStats.pendingRequests)}`, icon: <FiClipboard />, onClick: () => navigate('/admin/withdrawals') },
+    ], [dashboard.artisanStats.pendingArtisans, dashboard.complaintStats.pendingComplaints, dashboard.productAnalytics.pendingProducts, dashboard.withdrawalStats.pendingRequests, navigate]);
 
     return (
         <div className="admin-dashboard-page">
@@ -210,9 +283,75 @@ const AdminDashboard = () => {
                 </div>
 
                 <div className="dashboard-topbar-actions">
-                    <button type="button" className="dashboard-icon-btn" aria-label="Thông báo">
-                        <FiBell />
-                    </button>
+                    <label className="dashboard-range-picker" aria-label="Chọn mốc thời gian dashboard">
+                        <span>Xem nhanh</span>
+                        <select
+                            value={selectedDays}
+                            onChange={(e) => fetchDashboard(Number(e.target.value))}
+                        >
+                            {DASHBOARD_PRESETS.map((preset) => (
+                                <option key={preset.id} value={preset.id}>{preset.label}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <div className="dashboard-notification-wrap">
+                        <button
+                            type="button"
+                            className="dashboard-icon-btn"
+                            aria-label="Thông báo"
+                            onClick={() => setNotificationsOpen((value) => !value)}
+                        >
+                            <FiBell />
+                            {unreadCount > 0 && <span className="dashboard-notification-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+                        </button>
+                        {notificationsOpen && (
+                            <div className="dashboard-notification-dropdown">
+                                <div className="dashboard-notification-header">
+                                    <div>
+                                        <strong>Thông báo</strong>
+                                        <span>{unreadCount} chưa đọc</span>
+                                    </div>
+                                    <div className="dashboard-notification-actions">
+                                        <button type="button" className="activity-link" onClick={fetchNotifications}>
+                                            Làm mới
+                                        </button>
+                                        <button type="button" className="activity-link" onClick={markAllNotificationsAsRead} disabled={notificationsLoading || unreadCount === 0}>
+                                            Đọc tất cả
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="dashboard-notification-list">
+                                    {notificationsLoading ? (
+                                        <p className="chart-empty">Đang tải thông báo...</p>
+                                    ) : notificationsError ? (
+                                        <p className="dashboard-error">{notificationsError}</p>
+                                    ) : notifications.length > 0 ? notifications.map((item) => (
+                                        <button
+                                            type="button"
+                                            className={`dashboard-notification-item ${item.isRead ? 'read' : 'unread'}`}
+                                            key={item.notificationId}
+                                            onClick={() => markNotificationAsRead(
+                                                item.notificationId,
+                                                item.type === 'WITHDRAWAL_REQUESTED'
+                                                    ? '/admin/withdrawals'
+                                                    : item.type === 'OFFLINE_RECOVERY_REQUIRED'
+                                                        ? '/admin/recovery-management'
+                                                        : '/admin/complaints'
+                                            )}
+                                        >
+                                            <div className="dashboard-notification-dot" />
+                                            <div className="dashboard-notification-content">
+                                                <strong>{item.title}</strong>
+                                                <p>{item.message}</p>
+                                                <span>{item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : ''}</span>
+                                            </div>
+                                            <FiExternalLink className="dashboard-notification-link" />
+                                        </button>
+                                    )) : <p className="chart-empty">Chưa có thông báo.</p>}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <button type="button" className="dashboard-icon-btn" aria-label="Cài đặt">
                         <FiSettings />
                     </button>
@@ -222,7 +361,7 @@ const AdminDashboard = () => {
             <div className="dashboard-body admin-page">
                 <section className="dashboard-heading">
                     <h1>Tổng quan Thị trường</h1>
-                    <p>Trạng thái và hiệu suất của Thị trường Quà tặng Công giáo trong {DASHBOARD_DAYS} ngày gần nhất.</p>
+                    <p>Trạng thái và hiệu suất của Thị trường Quà tặng Công giáo trong {selectedDays} ngày gần nhất.</p>
                     {error && <p className="dashboard-error">{error}</p>}
                 </section>
 
@@ -244,9 +383,9 @@ const AdminDashboard = () => {
                         <header className="activity-header">
                             <div>
                                 <h3>Doanh thu theo ngày</h3>
-                                <p>Dữ liệu từ `revenueChart`</p>
+   
                             </div>
-                            <button type="button" className="activity-link">Xem chi tiết</button>
+                            <button type="button" className="activity-link" onClick={() => fetchDashboard(selectedDays)}>Làm mới</button>
                         </header>
                         <div className="chart-bars chart-bars--revenue">
                             {revenueTrend.length > 0 ? revenueTrend.map((item) => (
@@ -262,35 +401,37 @@ const AdminDashboard = () => {
                         </div>
                     </article>
 
-                    <article className="admin-card chart-card">
+                    <article className="admin-card chart-card chart-card--financial">
                         <header className="activity-header">
                             <div>
-                                <h3>Trạng thái đơn hàng</h3>
-                                <p>Từ `orderStatus` và hiệu suất</p>
+                                <h3>Chỉ số tài chính</h3>
+                                <p>Doanh thu nền tảng, hoa hồng và hoàn tiền</p>
                             </div>
-                            <button type="button" className="activity-link">Xem chi tiết</button>
                         </header>
                         <div className="status-chart-list">
-                            {Object.entries(dashboard.orderStatus || {}).map(([status, value]) => (
-                                <div className="status-chart-row" key={status}>
-                                    <span>{status}</span>
-                                    <div className="status-chart-track">
-                                        <div className="status-chart-fill" style={{ width: `${Math.min(100, Number(value) * 10)}%` }} />
-                                    </div>
-                                    <strong>{value}</strong>
-                                </div>
-                            ))}
                             <div className="status-chart-row status-chart-row--meta">
-                                <span>Hoàn tất đơn</span>
-                                <strong>{toPercent(dashboard.customOrderStats.conversionRate)}</strong>
+                                <span>Doanh thu nền tảng</span>
+                                <strong>{formatCurrency(dashboard.platformFinancials.totalPlatformRevenue)}</strong>
                             </div>
                             <div className="status-chart-row status-chart-row--meta">
-                                <span>Tỷ lệ khiếu nại</span>
-                                <strong>{toRate(dashboard.complaintStats.pendingComplaints, dashboard.complaintStats.totalComplaints)}</strong>
+                                <span>Hoa hồng đã kiếm</span>
+                                <strong>{formatCurrency(dashboard.platformFinancials.totalCommissionEarned)}</strong>
                             </div>
                             <div className="status-chart-row status-chart-row--meta">
-                                <span>Khách active</span>
-                                <strong>{toRate(dashboard.customerStats.activeCustomers, dashboard.customerStats.totalCustomers)}</strong>
+                                <span>Số dư khả dụng</span>
+                                <strong>{formatCurrency(dashboard.platformFinancials.totalAvailableBalance)}</strong>
+                            </div>
+                            <div className="status-chart-row status-chart-row--meta">
+                                <span>Số dư bị khóa</span>
+                                <strong>{formatCurrency(dashboard.platformFinancials.totalLockedBalance)}</strong>
+                            </div>
+                            <div className="status-chart-row status-chart-row--meta">
+                                <span>Tổng hoàn tiền</span>
+                                <strong>{formatCurrency(dashboard.refundStats.totalRefundAmount)}</strong>
+                            </div>
+                            <div className="status-chart-row status-chart-row--meta">
+                                <span>Rút tiền đã duyệt</span>
+                                <strong>{formatCurrency(dashboard.withdrawalStats.totalWithdrawnAmount)}</strong>
                             </div>
                         </div>
                     </article>
@@ -316,6 +457,29 @@ const AdminDashboard = () => {
                                     <strong>{formatCurrency(item.totalSpent)}</strong>
                                 </div>
                             )) : <p className="chart-empty">Chưa có dữ liệu khách hàng.</p>}
+                        </div>
+                    </article>
+
+                    <article className="admin-card chart-card">
+                        <header className="activity-header">
+                            <div>
+                                <h3>Top nghệ nhân</h3>
+                                <p>Theo tổng doanh thu và đánh giá</p>
+                            </div>
+                        </header>
+                        <div className="category-chart-list">
+                            {topArtisanBars.length > 0 ? topArtisanBars.map((item, index) => (
+                                <div className="category-chart-row" key={item.artisanId || index}>
+                                    <div className="category-chart-labels">
+                                        <strong>{item.artisanName || 'Nghệ nhân'}</strong>
+                                        <span>{formatNumber(item.totalOrders)} đơn • ⭐ {Number(item.averageRating || 0).toFixed(1)}</span>
+                                    </div>
+                                    <div className="category-chart-track">
+                                        <div className="category-chart-fill category-chart-fill--purple" style={{ width: `${item.height}%` }} />
+                                    </div>
+                                    <strong>{formatCurrency(item.totalRevenue)}</strong>
+                                </div>
+                            )) : <p className="chart-empty">Chưa có dữ liệu nghệ nhân.</p>}
                         </div>
                     </article>
 
@@ -348,7 +512,12 @@ const AdminDashboard = () => {
                             <h3>THAO TÁC NHANH</h3>
                             <div className="quick-actions-list">
                                 {quickActions.map((action) => (
-                                    <button type="button" className="quick-action-item" key={action.id}>
+                                    <button
+                                        type="button"
+                                        className="quick-action-item"
+                                        key={action.id}
+                                        onClick={action.onClick}
+                                    >
                                         <span className="quick-action-icon">{action.icon}</span>
                                         <span>{action.label}</span>
                                     </button>
@@ -357,14 +526,22 @@ const AdminDashboard = () => {
                         </article>
 
                         <article className="admin-card system-status-card">
-                            <h3>Trạng thái hệ thống</h3>
+                            <h3>THÔNG TIN MỚI</h3>
                             <div className="status-row">
-                                <span>Nghệ nhân đang hoạt động</span>
-                                <strong>{formatNumber(dashboard.artisanStats.activeArtisans)}/{formatNumber(dashboard.artisanStats.totalArtisans)}</strong>
+                                <span>Đơn sản phẩm</span>
+                                <strong>{formatNumber(dashboard.productAnalytics.totalProducts)}</strong>
                             </div>
                             <div className="status-row">
-                                <span>Sản phẩm đang hoạt động</span>
-                                <strong>{formatNumber(dashboard.productAnalytics.approvedProducts)}/{formatNumber(dashboard.productAnalytics.totalProducts)}</strong>
+                                <span>Đơn khiếu nại</span>
+                                <strong>{formatNumber(dashboard.complaintStats.totalComplaints)}</strong>
+                            </div>
+                            <div className="status-row">
+                                <span>Yêu cầu rút tiền</span>
+                                <strong>{formatNumber(dashboard.withdrawalStats.totalRequests)}</strong>
+                            </div>
+                            <div className="status-row">
+                                <span>Tổng hoàn tiền</span>
+                                <strong>{formatCurrency(dashboard.refundStats.totalRefundAmount)}</strong>
                             </div>
                             <div className="status-progress">
                                 <span style={{ width: `${Math.min(100, dashboard.customerStats.totalCustomers ? (dashboard.customerStats.activeCustomers / dashboard.customerStats.totalCustomers) * 100 : 0)}%` }} />

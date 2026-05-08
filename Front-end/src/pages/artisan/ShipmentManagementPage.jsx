@@ -12,6 +12,7 @@ import {
     getShipmentProvinces,
     getShipmentWardOptions,
     getShipmentByOrderId,
+    getShipmentByCustomOrderId,
     webhookGhn,
 } from '../../services/shipmentService';
 import './ShipmentManagementPage.css';
@@ -110,6 +111,7 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     const [selectedOrderId, setSelectedOrderId] = useState('');
     const [orderTypeFilter, setOrderTypeFilter] = useState('ALL');
     const [orderSortDirection, setOrderSortDirection] = useState('DESC');
+    const [showOnlyUncreatedOrders, setShowOnlyUncreatedOrders] = useState(false);
     const [actioningId, setActioningId] = useState('');
     const [shippingSubmitting, setShippingSubmitting] = useState(false);
     const [provinces, setProvinces] = useState([]);
@@ -127,6 +129,17 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     const cityOptions = provinces;
     const availableDistricts = districts;
     const availableWards = wards;
+
+    const getShipmentKey = (shipment) => shipment?.customOrderId || shipment?.orderId || shipment?.id || null;
+
+    const normalizeShipmentRecord = (shipment) => {
+        if (!shipment) return null;
+        return {
+            ...shipment,
+            code: shipment?.ghnOrderCode || shipment?.trackingNumber || shipment?.code || shipment?.shipmentCode || null,
+            status: shipment?.status || shipment?.shipmentStatus || null,
+        };
+    };
 
     const loadShipments = async () => {
         if (!artisanId) return;
@@ -173,13 +186,13 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                 const orderId = order?.orderId || order?.id;
                 if (!orderId) return [null, null];
                 const res = await getShipmentByOrderId(orderId);
-                return [orderId, res.success ? res.data : null];
+                return [orderId, normalizeShipmentRecord(res.success ? res.data : null)];
             }),
             ...completedCustomOrders.map(async (order) => {
                 const customOrderId = order?.customOrderId || order?.id;
                 if (!customOrderId) return [null, null];
-                const res = await getShipmentByOrderId(customOrderId);
-                return [customOrderId, res.success ? res.data : null];
+                const res = await getShipmentByCustomOrderId(customOrderId);
+                return [customOrderId, normalizeShipmentRecord(res.success ? res.data : null)];
             }),
         ]);
 
@@ -224,8 +237,10 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
 
         const filteredOrders = mappedOrders.filter((order) => {
             const source = String(order?.shipmentSource || '').toUpperCase();
-            if (orderTypeFilter === 'PAID') return source === 'PAID';
-            if (orderTypeFilter === 'CUSTOM') return source === 'CUSTOM';
+            const shipment = shipments[getShipmentKey(order)];
+            if (orderTypeFilter === 'PAID' && source !== 'PAID') return false;
+            if (orderTypeFilter === 'CUSTOM' && source !== 'CUSTOM') return false;
+            if (showOnlyUncreatedOrders && shipment) return false;
             return true;
         });
 
@@ -234,13 +249,13 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
             const bTime = toTimestamp(b);
             return orderSortDirection === 'ASC' ? aTime - bTime : bTime - aTime;
         });
-    }, [orders, customOrders, orderTypeFilter, orderSortDirection]);
+    }, [orders, customOrders, orderTypeFilter, orderSortDirection, shipments, showOnlyUncreatedOrders]);
 
     const selectedOrder = useMemo(() => shipmentCandidates.find((order) => String(order?.orderId || order?.id || order?.customOrderId) === String(selectedOrderId)) || null, [shipmentCandidates, selectedOrderId]);
     const selectedOrderShipmentKey = selectedOrder?.shipmentSource?.toUpperCase() === 'CUSTOM'
         ? (selectedOrder?.customOrderId || selectedOrder?.id)
         : (selectedOrder?.orderId || selectedOrder?.id);
-    const selectedShipment = selectedOrder ? shipments[selectedOrderShipmentKey] : null;
+    const selectedShipment = selectedOrder ? normalizeShipmentRecord(shipments[selectedOrderShipmentKey]) : null;
     const selectedProfile = selectedOrder ? profileByAccountId[String(selectedOrder.customerId || selectedOrder.accountId || selectedOrder.customerAccountId || selectedOrder.buyerAccountId || '')] || null : null;
     const selectedProfileKey = String(selectedOrder?.customerId || selectedOrder?.accountId || selectedOrder?.customerAccountId || selectedOrder?.buyerAccountId || '').trim();
 
@@ -479,6 +494,15 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                 return;
             }
 
+            const createdShipment = normalizeShipmentRecord(res.data);
+            const shipmentKey = getShipmentKey(createdShipment) || selectedOrderIdValue;
+            if (shipmentKey) {
+                setShipments((prev) => ({
+                    ...prev,
+                    [shipmentKey]: createdShipment,
+                }));
+            }
+
             await loadShipments();
             setShipmentFormOpen(false);
             resetShipmentForm();
@@ -491,7 +515,7 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     };
 
     const handleOpenOrderDetail = async (order) => {
-        const orderId = order?.orderId || order?.id || order?.customOrderId;
+        const orderId = order?.orderId || order?.id;
         if (!orderId) return;
 
         setDetailModalOpen(true);
@@ -499,10 +523,29 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
         setDetailError('');
         setDetailOrder(null);
 
-        const isCustomOrder = String(order?.shipmentSource || '').toUpperCase() === 'CUSTOM';
-        const res = isCustomOrder ? await getCustomOrderDetail(orderId) : await getOrderById(orderId);
+        const res = await getOrderById(orderId);
         if (!res.success) {
             setDetailError(res.error || 'Không tải được thông tin đơn hàng.');
+            setDetailLoading(false);
+            return;
+        }
+
+        setDetailOrder(res.data);
+        setDetailLoading(false);
+    };
+
+    const handleOpenCustomOrderDetail = async (order) => {
+        const customOrderId = order?.customOrderId || order?.id;
+        if (!customOrderId) return;
+
+        setDetailModalOpen(true);
+        setDetailLoading(true);
+        setDetailError('');
+        setDetailOrder(null);
+
+        const res = await getCustomOrderDetail(customOrderId);
+        if (!res.success) {
+            setDetailError(res.error || 'Không tải được thông tin đơn custom.');
             setDetailLoading(false);
             return;
         }
@@ -543,6 +586,8 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
     };
 
     const orderDetail = detailOrder;
+    const isDetailCustomOrder = Boolean(orderDetail?.customOrderId) && !orderDetail?.orderId;
+    const hasCustomOrderId = Boolean(selectedOrder?.customOrderId);
     const content = (
         <div className="artisan-shipment-page">
             <header className="shipment-page-header">
@@ -579,6 +624,17 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                                     <option value="PAID">Đơn thường</option>
                                     <option value="CUSTOM">Đơn custom hoàn thành</option>
                                 </select>
+                            </label>
+                            <label className="shipment-filter-field shipment-filter-checkbox">
+                                <span>Hiển thị</span>
+                                <div className="shipment-checkbox-wrap">
+                                    <input
+                                        type="checkbox"
+                                        checked={showOnlyUncreatedOrders}
+                                        onChange={(e) => setShowOnlyUncreatedOrders(e.target.checked)}
+                                    />
+                                    <span>Chỉ hiện đơn "Chưa tạo"</span>
+                                </div>
                             </label>
                             <label className="shipment-filter-field">
                                 <span>Sắp xếp</span>
@@ -629,7 +685,11 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                                     <p className="page-kicker">Đơn hàng đã chọn</p>
                                     <h3>#{String(selectedOrder.orderId || selectedOrder.id).slice(0, 8)}</h3>
                                 </div>
-                                <button type="button" className="btn btn-outline btn-sm" onClick={() => handleOpenOrderDetail(selectedOrder)}>
+                                <button
+                                    type="button"
+                                    className="btn btn-outline btn-sm"
+                                    onClick={() => (hasCustomOrderId ? handleOpenCustomOrderDetail(selectedOrder) : handleOpenOrderDetail(selectedOrder))}
+                                >
                                     <FiExternalLink /> Chi tiết đơn
                                 </button>
                             </div>
@@ -638,7 +698,7 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                                 <p><span>Khách hàng</span><strong>{selectedProfile?.fullName || selectedOrder.fullName || selectedOrder.customerName || '—'}</strong></p>
                                 <p><span>Điện thoại</span><strong>{selectedProfile?.phone || selectedOrder.phoneNumber || selectedOrder.phone || selectedOrder.customerPhone || '—'}</strong></p>
                                 <p><span>Địa chỉ</span><strong>{selectedProfile?.address || selectedOrder.shippingAddress || selectedOrder.address || '—'}</strong></p>
-                                <p><span>Vận đơn</span><strong>{selectedShipment?.trackingNumber || selectedShipment?.code || 'Chưa có'}</strong></p>
+                                <p><span>Vận đơn</span><strong>{selectedShipment?.trackingNumber || selectedShipment?.ghnOrderCode || selectedShipment?.code || 'Chưa có'}</strong></p>
                                 <p><span>Trạng thái</span><strong>{STATUS_LABELS[String(selectedShipment?.status || selectedShipment?.shipmentStatus || '').toUpperCase()] || String(selectedShipment?.status || selectedShipment?.shipmentStatus || '—')}</strong></p>
                             </div>
 
@@ -754,7 +814,13 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                 <div className="order-detail-side-panel-header">
                     <div>
                         <p className="page-kicker">Chi tiết đơn hàng</p>
-                        <h3 id="order-detail-title">{orderDetail?.orderId ? `#${String(orderDetail.orderId).slice(0, 8)}` : 'Đang tải...'}</h3>
+                        <h3 id="order-detail-title">
+                            {orderDetail?.orderId
+                                ? `#${String(orderDetail.orderId).slice(0, 8)}`
+                                : orderDetail?.customOrderId
+                                    ? `#${String(orderDetail.customOrderId).slice(0, 8)}`
+                                    : 'Đang tải...'}
+                        </h3>
                     </div>
                     <button type="button" className="btn btn-outline btn-sm" onClick={handleCloseOrderDetail}>Đóng</button>
                 </div>
@@ -768,19 +834,19 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                         <section className="order-detail-section">
                             <h4>Thông tin chung</h4>
                             <div className="order-detail-grid order-detail-grid-2">
-                                <div className="order-detail-item"><span>Mã đơn</span><strong>{orderDetail.orderId || '—'}</strong></div>
-                                <div className="order-detail-item"><span>Khách hàng</span><strong>{orderDetail.fullName || '—'}</strong></div>
+                                <div className="order-detail-item"><span>{isDetailCustomOrder ? 'Custom Order ID' : 'Mã đơn'}</span><strong>{orderDetail.customOrderId || orderDetail.orderId || '—'}</strong></div>
+                                <div className="order-detail-item"><span>Khách hàng</span><strong>{orderDetail.fullName || orderDetail.customerName || '—'}</strong></div>
                                 <div className="order-detail-item"><span>Trạng thái</span><strong>{STATUS_LABELS[String(orderDetail.status || '').toUpperCase()] || orderDetail.status || '—'}</strong></div>
                                 <div className="order-detail-item"><span>Thanh toán</span><strong>{PAYMENT_LABELS[String(orderDetail.paymentMethod || '').toUpperCase()] || orderDetail.paymentMethod || '—'}</strong></div>
-                                <div className="order-detail-item"><span>Ngày tạo</span><strong>{formatDateTime(orderDetail.orderDate || orderDetail.createAt)}</strong></div>
-                                <div className="order-detail-item"><span>Cập nhật</span><strong>{formatDateTime(orderDetail.updateAt)}</strong></div>
+                                <div className="order-detail-item"><span>Ngày tạo</span><strong>{formatDateTime(orderDetail.orderDate || orderDetail.createdAt || orderDetail.createAt)}</strong></div>
+                                <div className="order-detail-item"><span>Cập nhật</span><strong>{formatDateTime(orderDetail.updateAt || orderDetail.updatedAt)}</strong></div>
                             </div>
                         </section>
 
                         <section className="order-detail-section">
                             <h4>Thanh toán</h4>
                             <div className="order-detail-grid order-detail-grid-3">
-                                <div className="order-detail-item"><span>Tổng tiền</span><strong>{formatCurrency(orderDetail.total)}</strong></div>
+                                <div className="order-detail-item"><span>Tổng tiền</span><strong>{formatCurrency(orderDetail.total || orderDetail.totalPrice)}</strong></div>
                                 <div className="order-detail-item"><span>Tổng tính lại</span><strong>{formatCurrency(orderDetailsTotal)}</strong></div>
                                 <div className="order-detail-item"><span>Khách hàng ID</span><strong>{orderDetail.customerId || '—'}</strong></div>
                             </div>
@@ -791,14 +857,14 @@ const ShipmentManagementPage = ({ user, embedded = false }) => {
                             {Array.isArray(orderDetail.orderDetails) && orderDetail.orderDetails.length > 0 ? (
                                 <div className="order-detail-items-list">
                                     {orderDetail.orderDetails.map((item) => (
-                                        <article key={item.id} className="order-detail-product-card">
-                                            <img src={item.image || '/logo.png'} alt={item.productName || 'Sản phẩm'} />
+                                        <article key={item.id || item.stageId || item.productName} className="order-detail-product-card">
+                                            <img src={item.image || item.completionImageUrl || '/logo.png'} alt={item.productName || item.stageName || 'Sản phẩm'} />
                                             <div>
-                                                <strong>{item.productName || '—'}</strong>
-                                                <p>Số lượng: {item.quantity || 0}</p>
-                                                <p>Đơn giá: {formatCurrency(item.unitPrice)}</p>
+                                                <strong>{item.productName || item.stageName || '—'}</strong>
+                                                <p>Số lượng: {item.quantity || item.stageOrder || 0}</p>
+                                                <p>Đơn giá: {formatCurrency(item.unitPrice || item.amount)}</p>
                                                 <p>Giảm giá: {formatCurrency(item.discount)}</p>
-                                                <p>Tạm tính: {formatCurrency(item.subTotal)}</p>
+                                                <p>Tạm tính: {formatCurrency(item.subTotal || item.amount)}</p>
                                             </div>
                                         </article>
                                     ))}

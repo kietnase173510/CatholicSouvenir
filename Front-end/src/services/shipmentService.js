@@ -166,6 +166,23 @@ export const getShipmentByOrderId = async (orderId) => {
     }
 };
 
+export const getShipmentByCustomOrderId = async (customOrderId) => {
+    if (!customOrderId) return { success: false, error: 'Thiếu mã đơn custom.' };
+
+    try {
+        const response = await api.get(`/shipments/custom-order/${customOrderId}`);
+        const normalized = normalizeResponse(response);
+
+        if (!isSuccessCode(normalized.code)) {
+            return { success: false, error: normalized.message || 'Không tải được thông tin vận chuyển.' };
+        }
+
+        return { success: true, data: normalized.data || null };
+    } catch (error) {
+        return { success: false, error: mapError(error, 'Không tải được thông tin vận chuyển.') };
+    }
+};
+
 export const getTrackingByNumber = async (trackingNumber) => {
     if (!trackingNumber) return { success: false, error: 'Thiếu mã vận đơn.', data: [] };
 
@@ -248,6 +265,7 @@ export default {
     webhookGhn,
     updateDemoShipmentStatus,
     getShipmentByOrderId,
+    getShipmentByCustomOrderId,
     getTrackingByNumber,
     getDemoShipmentStatuses,
     getShipmentTimeline,

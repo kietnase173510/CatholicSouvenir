@@ -49,9 +49,17 @@ const AdminComplaintManagementPage = () => {
     const [rejectionReason, setRejectionReason] = useState('');
     const [zoomedEvidence, setZoomedEvidence] = useState(null);
     const [orderTotal, setOrderTotal] = useState(null);
+    const [commissionRate, setCommissionRate] = useState(null);
     const [orderLoading, setOrderLoading] = useState(false);
 
     const compareCreatedAt = (a, b) => dayjs(a?.createdAt || a?.created_at || 0).valueOf() - dayjs(b?.createdAt || b?.created_at || 0).valueOf();
+
+    const getRefundableAmount = (total, rate) => {
+        const numericTotal = Number(total);
+        const numericRate = Number(rate);
+        if (!Number.isFinite(numericTotal) || !Number.isFinite(numericRate)) return null;
+        return Math.max(0, Math.round(numericTotal * (1 - numericRate / 100)));
+    };
 
     const loadComplaints = async () => {
         setLoading(true);
@@ -68,6 +76,13 @@ const AdminComplaintManagementPage = () => {
         const firstItems = Array.isArray(firstData.content) ? firstData.content : complaintService.toArray(firstData);
         const firstTotalPages = Number(firstData.totalPages || 1);
         const pageRequests = [];
+
+        if (commissionRate == null) {
+            const rateRes = await complaintService.getCommissionRate();
+            if (rateRes.success) {
+                setCommissionRate(Number(rateRes.data?.commissionRate ?? 0));
+            }
+        }
 
         for (let nextPage = 1; nextPage < firstTotalPages; nextPage += 1) {
             pageRequests.push(complaintService.getAdminComplaints({ status: statusFilter || undefined, page: nextPage, size: PAGE_SIZE }));
@@ -105,6 +120,7 @@ const AdminComplaintManagementPage = () => {
         setModalAction(action);
         setDetailMode(true);
         setOrderTotal(null);
+        setCommissionRate(null);
         const res = await complaintService.getAdminComplaintDetail(item.complaintId || item.id);
         if (!res.success) {
             appToast.error('Không tải được chi tiết', res.error || 'Vui lòng thử lại sau');
@@ -119,12 +135,23 @@ const AdminComplaintManagementPage = () => {
         const orderId = detailData?.orderId || item.orderId;
         if (orderId) {
             setOrderLoading(true);
-            const orderRes = await complaintService.getOrderById(orderId);
+            const [orderRes, rateRes] = await Promise.all([
+                complaintService.getOrderById(orderId),
+                complaintService.getCommissionRate(),
+            ]);
+
             if (orderRes.success) {
                 setOrderTotal(orderRes.data?.total ?? null);
             } else {
                 setOrderTotal(null);
             }
+
+            if (rateRes.success) {
+                setCommissionRate(Number(rateRes.data?.commissionRate ?? 0));
+            } else {
+                setCommissionRate(null);
+            }
+
             setOrderLoading(false);
         }
     };
@@ -250,10 +277,7 @@ const AdminComplaintManagementPage = () => {
                                     <span>Trạng thái</span>
                                     <strong>{translateStatus(selectedDetail?.status || selected.status, COMPLAINT_STATUS_LABELS)}</strong>
                                 </div>
-                                <div className="admin-complaint-summary-row">
-                                    <span>Trả hàng</span>
-                                    <strong>{selectedDetail?.requireReturn ? 'Có' : 'Không'}</strong>
-                                </div>
+
                                 <div className="admin-complaint-summary-row">
                                     <span>Bằng chứng</span>
                                     <strong>{(selectedDetail?.evidenceImages || []).length} ảnh</strong>
@@ -269,6 +293,14 @@ const AdminComplaintManagementPage = () => {
                                 <div className="admin-complaint-summary-row">
                                     <span>Tổng đơn hàng</span>
                                     <strong>{orderLoading ? 'Đang tải...' : (orderTotal != null ? `${Number(orderTotal).toLocaleString('vi-VN')} đ` : '—')}</strong>
+                                </div>
+                                <div className="admin-complaint-summary-row">
+                                    <span>Số tiền có thể hoàn</span>
+                                    <strong>{orderLoading ? 'Đang tải...' : (getRefundableAmount(orderTotal, commissionRate) != null ? `${getRefundableAmount(orderTotal, commissionRate).toLocaleString('vi-VN')} đ` : '—')}</strong>
+                                </div>
+                                <div className="admin-complaint-summary-row">
+                                    <span>Commission rate</span>
+                                    <strong>{commissionRate != null ? `${commissionRate}%` : '—'}</strong>
                                 </div>
                                 <div className="admin-complaint-summary-row">
                                     <span>ID khiếu nại</span>
@@ -361,7 +393,14 @@ const AdminComplaintManagementPage = () => {
                                         <div className="admin-complaint-form-grid admin-complaint-modal-form">
                                             {modalAction === 'APPROVE' ? (
                                                 <>
-                                                    <input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder="Số tiền hoàn" />
+                                                    <input
+                                                        value={refundAmount}
+                                                        onChange={(e) => setRefundAmount(e.target.value)}
+                                                        placeholder="Số tiền hoàn"
+                                                    />
+                                                    <div className="admin-complaint-helper-text">
+                                                        Số tiền đề xuất: {getRefundableAmount(orderTotal, commissionRate) != null ? `${getRefundableAmount(orderTotal, commissionRate).toLocaleString('vi-VN')} đ` : '—'}
+                                                    </div>
                                                     <input value={adminNote} onChange={(e) => setAdminNote(e.target.value)} placeholder="Ghi chú admin" />
                                                 </>
                                             ) : (
